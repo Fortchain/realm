@@ -52,6 +52,8 @@ export class CityScene extends Phaser.Scene {
   private displayName = "You"
   private walkTick = 0
   private facingDir: "n" | "s" | "e" | "w" = "s"
+  private lastPosEmit = 0
+  private teleportHandler!: EventListener
 
   constructor() { super({ key: "CityScene" }) }
 
@@ -71,6 +73,15 @@ export class CityScene extends Phaser.Scene {
     this.scale.on("resize", () => {
       this.promptText?.setPosition(this.cameras.main.width / 2, this.cameras.main.height - 50)
     })
+
+    // Teleport listener — fired by MapHUD when user clicks a location
+    this.teleportHandler = (e: Event) => {
+      const { x, y } = (e as CustomEvent<{ x: number; y: number }>).detail
+      this.player.x = x
+      this.player.y = y
+      this.cameras.main.flash(200, 0, 0, 0, false)
+    }
+    window.addEventListener("realm:teleport", this.teleportHandler)
   }
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -1155,5 +1166,18 @@ export class CityScene extends Phaser.Scene {
         this.tweens.add({ targets: this.promptText, alpha: 0, duration: 200 })
       }
     }
+
+    // Emit player position to MapHUD (throttled to ~80 ms)
+    if (this.time.now - this.lastPosEmit > 80) {
+      this.lastPosEmit = this.time.now
+      window.dispatchEvent(new CustomEvent("realm:player-position", {
+        detail: { x: this.player.x, y: this.player.y },
+      }))
+    }
+  }
+
+  // Clean up global listener when scene shuts down
+  shutdown() {
+    if (this.teleportHandler) window.removeEventListener("realm:teleport", this.teleportHandler)
   }
 }

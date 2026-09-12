@@ -7,6 +7,7 @@ import { useClerk } from "@clerk/nextjs"
 import { motion, AnimatePresence } from "framer-motion"
 import dynamic from "next/dynamic"
 import { Phone } from "@/components/phone/phone"
+import { MapHUD } from "@/components/game/map-hud"
 import { BUILDINGS } from "@/lib/buildings"
 
 const GameCanvas = dynamic(() => import("@/components/game/game-canvas"), { ssr: false })
@@ -177,6 +178,9 @@ export default function CityPage() {
 
       {/* ── Phone widget (FAB + panel) ── */}
       <Phone />
+
+      {/* ── Map HUD (minimap + full map overlay) ── */}
+      <MapHUD />
 
       {/* Click outside to close user menu */}
       {showUserMenu && <div className="fixed inset-0 z-20" onClick={() => setShowUserMenu(false)} />}
