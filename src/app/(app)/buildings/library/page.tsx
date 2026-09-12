@@ -1,11 +1,14 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { useRouter } from "next/navigation"
-import { ArrowLeft, Upload, FileText, Download, Trash2, FolderOpen, Loader2 } from "lucide-react"
+import { ArrowLeft, Upload, X, FileText, Download, Trash2, Loader2, BookOpen, GraduationCap, FlaskConical } from "lucide-react"
+import dynamic from "next/dynamic"
 import { AiChatPanel } from "@/components/buildings/ai-chat-panel"
-import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
+import type { LibraryZone } from "@/components/game/library-interior-scene"
+
+const LibraryCanvas = dynamic(() => import("@/components/game/library-canvas"), { ssr: false })
 
 interface RealmFile {
   id: string
@@ -18,13 +21,13 @@ interface RealmFile {
 }
 
 const SUBJECTS = [
-  { id: "general", label: "General Help", icon: "📖" },
-  { id: "math", label: "Mathematics", icon: "🔢" },
-  { id: "science", label: "Science", icon: "🔬" },
-  { id: "english", label: "English & Writing", icon: "✍️" },
-  { id: "history", label: "History", icon: "🏛️" },
-  { id: "coding", label: "Coding & Tech", icon: "💻" },
-  { id: "business", label: "Business & Finance", icon: "📊" },
+  { id: "general",  label: "General Help",         icon: "📖" },
+  { id: "math",     label: "Mathematics",           icon: "🔢" },
+  { id: "science",  label: "Science",               icon: "🔬" },
+  { id: "english",  label: "English & Writing",     icon: "✍️" },
+  { id: "history",  label: "History",               icon: "🏛️" },
+  { id: "coding",   label: "Coding & Tech",         icon: "💻" },
+  { id: "business", label: "Business & Finance",    icon: "📊" },
 ]
 
 function formatBytes(bytes: number): string {
@@ -33,13 +36,134 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
+// Sliding panel that appears when in a zone
+function ZonePanel({ zone, onClose, files, loadingFiles, uploading, onUpload, onDeleteFile, activeSubject, setActiveSubject }: {
+  zone: LibraryZone
+  onClose: () => void
+  files: RealmFile[]
+  loadingFiles: boolean
+  uploading: boolean
+  onUpload: (e: React.ChangeEvent<HTMLInputElement>) => void
+  onDeleteFile: (id: string) => void
+  activeSubject: string
+  setActiveSubject: (s: string) => void
+}) {
+  if (!zone || zone === "exit") return null
+
+  const contextData = activeSubject !== "general"
+    ? `The student is asking about ${SUBJECTS.find((s) => s.id === activeSubject)?.label}. Focus on that subject.`
+    : undefined
+
+  return (
+    <div className="fixed inset-y-0 right-0 w-full max-w-sm z-40 flex flex-col bg-[#0c0c1e]/95 border-l border-blue-500/20 shadow-2xl backdrop-blur-sm">
+      {/* Panel header */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-white/8 shrink-0">
+        <div className="flex items-center gap-2">
+          {zone === "professor" && <><GraduationCap className="w-4 h-4 text-blue-400" /><span className="text-white font-semibold text-sm">Prof. Elena Vasquez</span></>}
+          {zone === "books"     && <><BookOpen       className="w-4 h-4 text-blue-400" /><span className="text-white font-semibold text-sm">Book Stacks</span></>}
+          {zone === "tables"    && <><FlaskConical   className="w-4 h-4 text-blue-400" /><span className="text-white font-semibold text-sm">Study Tables</span></>}
+        </div>
+        <button onClick={onClose} className="text-white/40 hover:text-white p-1 rounded-lg hover:bg-white/5 transition-colors">
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+
+      {zone === "professor" && (
+        <div className="flex flex-col flex-1 min-h-0">
+          {/* Subject selector */}
+          <div className="px-3 py-2 border-b border-white/8 shrink-0">
+            <div className="flex flex-wrap gap-1">
+              {SUBJECTS.map((s) => (
+                <button
+                  key={s.id}
+                  onClick={() => setActiveSubject(s.id)}
+                  className={cn("flex items-center gap-1 px-2 py-1 rounded-lg text-xs transition-colors", activeSubject === s.id ? "bg-blue-600/25 text-blue-300 border border-blue-500/30" : "text-white/40 hover:text-white/70 hover:bg-white/5")}
+                >
+                  <span>{s.icon}</span>
+                  <span className="hidden sm:inline">{s.label.split(" ")[0]}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="flex-1 min-h-0">
+            <AiChatPanel
+              location="library"
+              personaName="Prof. Elena Vasquez"
+              personaTitle={`${SUBJECTS.find((s) => s.id === activeSubject)?.label} · Head Librarian`}
+              personaAvatar="EV"
+              accentColor="blue"
+              contextData={contextData}
+            />
+          </div>
+        </div>
+      )}
+
+      {zone === "books" && (
+        <div className="flex flex-col flex-1 min-h-0 p-4 overflow-y-auto">
+          <p className="text-white/40 text-xs mb-4">Upload study materials or ask the professor to research a topic from here.</p>
+          <label className={cn("flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold cursor-pointer transition-all mb-4 self-start",
+            "bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/25 hover:border-blue-500/50"
+          )}>
+            {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+            Upload File
+            <input type="file" className="hidden" onChange={onUpload} accept=".pdf,.doc,.docx,.txt,.md,.png,.jpg,.jpeg" />
+          </label>
+
+          {loadingFiles ? (
+            <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 text-white/30 animate-spin" /></div>
+          ) : files.length === 0 ? (
+            <div className="text-center py-8 text-white/20 text-xs">No files yet. Upload your first document.</div>
+          ) : (
+            <div className="space-y-1">
+              {files.map((file) => (
+                <div key={file.id} className="flex items-center gap-2 px-2 py-2 rounded-lg group hover:bg-white/5">
+                  <FileText className="w-4 h-4 text-blue-400 shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-white/80 text-xs font-medium truncate">{file.name}</div>
+                    <div className="text-white/30 text-xs">{formatBytes(file.size)}</div>
+                  </div>
+                  <div className="flex gap-1 opacity-0 group-hover:opacity-100">
+                    <a href={file.url} target="_blank" rel="noopener noreferrer" className="text-white/40 hover:text-white/80"><Download className="w-3.5 h-3.5" /></a>
+                    <button onClick={() => onDeleteFile(file.id)} className="text-white/40 hover:text-red-400"><Trash2 className="w-3.5 h-3.5" /></button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {zone === "tables" && (
+        <div className="flex flex-col flex-1 min-h-0">
+          <div className="flex-1 min-h-0">
+            <AiChatPanel
+              location="library"
+              personaName="Prof. Elena Vasquez"
+              personaTitle="Study Session · Ask anything"
+              personaAvatar="EV"
+              accentColor="blue"
+              contextData="The student is at a study table working collaboratively. Help them brainstorm, outline, or work through problems together."
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function LibraryPage() {
   const router = useRouter()
   const [files, setFiles] = useState<RealmFile[]>([])
   const [activeSubject, setActiveSubject] = useState("general")
   const [uploading, setUploading] = useState(false)
   const [loadingFiles, setLoadingFiles] = useState(true)
-  const [activeTab, setActiveTab] = useState<"files" | "subjects">("subjects")
+  const [activeZone, setActiveZone] = useState<LibraryZone>(null)
+  const [user, setUser] = useState<{ displayName?: string | null } | null>(null)
+  const onZoneChangeRef = useRef<((zone: LibraryZone) => void) | null>(null)
+
+  useEffect(() => {
+    fetch("/api/user/me").then((r) => r.ok ? r.json() : null).then(setUser)
+  }, [])
 
   const fetchFiles = useCallback(async () => {
     const res = await fetch("/api/files?folder=library")
@@ -49,20 +173,19 @@ export default function LibraryPage() {
 
   useEffect(() => { fetchFiles() }, [fetchFiles])
 
+  const handleZoneChange = useCallback((zone: LibraryZone) => {
+    setActiveZone(zone)
+  }, [])
+
   async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
     setUploading(true)
-
     const formData = new FormData()
     formData.append("file", file)
     formData.append("folder", "library")
-
     const res = await fetch("/api/files/upload", { method: "POST", body: formData })
-    if (res.ok) {
-      const saved = await res.json()
-      setFiles((prev) => [saved, ...prev])
-    }
+    if (res.ok) { const saved = await res.json(); setFiles((prev) => [saved, ...prev]) }
     setUploading(false)
     e.target.value = ""
   }
@@ -72,153 +195,46 @@ export default function LibraryPage() {
     await fetch(`/api/files?id=${id}`, { method: "DELETE" })
   }
 
-  const contextData = activeSubject !== "general"
-    ? `The student is asking about ${SUBJECTS.find((s) => s.id === activeSubject)?.label}. Focus your help on that subject.`
-    : undefined
-
   return (
-    <div className="h-screen bg-[#080810] text-white flex flex-col overflow-hidden">
+    <div className="h-screen bg-[#080810] text-white overflow-hidden flex flex-col">
       {/* Top bar */}
-      <header className="flex items-center gap-4 px-6 py-4 border-b border-white/8 shrink-0">
+      <header className="flex items-center gap-4 px-6 py-3 border-b border-white/8 shrink-0 bg-[#080810]/90 backdrop-blur z-30">
         <button onClick={() => router.push("/city")} className="flex items-center gap-2 text-white/50 hover:text-white text-sm transition-colors">
           <ArrowLeft className="w-4 h-4" />
-          Back to City
+          <span className="hidden sm:inline">Back to City</span>
         </button>
-        <div className="flex items-center gap-2 ml-2">
+        <div className="flex items-center gap-2">
           <span className="text-xl">📚</span>
           <span className="font-bold text-white">City Library</span>
         </div>
-        <div className="ml-auto flex items-center gap-2">
-          <label className={cn("flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold cursor-pointer transition-all",
-            "bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/25 hover:border-blue-500/50"
-          )}>
-            {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-            Upload File
-            <input type="file" className="hidden" onChange={handleFileUpload} accept=".pdf,.doc,.docx,.txt,.md,.png,.jpg,.jpeg" />
-          </label>
+        <div className="ml-auto flex items-center gap-2 text-white/30 text-xs">
+          <span className="hidden sm:inline">Walk to a zone · Press</span>
+          <kbd className="bg-white/8 border border-white/15 rounded px-1.5 py-0.5 font-mono text-xs">E</kbd>
+          <span className="hidden sm:inline">to interact</span>
         </div>
       </header>
 
-      <div className="flex flex-1 min-h-0">
-        {/* Left sidebar */}
-        <div className="w-56 shrink-0 border-r border-white/8 flex flex-col">
-          {/* Tabs */}
-          <div className="flex border-b border-white/8">
-            {[{ id: "subjects", label: "Subjects" }, { id: "files", label: "My Files" }].map((t) => (
-              <button
-                key={t.id}
-                onClick={() => setActiveTab(t.id as "files" | "subjects")}
-                className={cn("flex-1 py-3 text-xs font-semibold transition-colors", activeTab === t.id ? "text-white border-b-2 border-blue-500" : "text-white/40 hover:text-white/70")}
-              >
-                {t.label}
-              </button>
-            ))}
-          </div>
+      {/* Game canvas */}
+      <div className="flex-1 min-h-0 relative flex items-center justify-center p-4">
+        <LibraryCanvas
+          displayName={user?.displayName ?? "You"}
+          onZoneChange={handleZoneChange}
+        />
 
-          <div className="flex-1 overflow-y-auto p-3">
-            {activeTab === "subjects" && (
-              <div className="space-y-1">
-                {SUBJECTS.map((s) => (
-                  <button
-                    key={s.id}
-                    onClick={() => setActiveSubject(s.id)}
-                    className={cn("w-full text-left flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm transition-colors",
-                      activeSubject === s.id ? "bg-blue-600/20 text-white border border-blue-500/30" : "text-white/60 hover:bg-white/5 hover:text-white"
-                    )}
-                  >
-                    <span className="text-base">{s.icon}</span>
-                    <span>{s.label}</span>
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {activeTab === "files" && (
-              <div className="space-y-1">
-                {loadingFiles ? (
-                  <div className="flex justify-center py-8">
-                    <Loader2 className="w-5 h-5 text-white/30 animate-spin" />
-                  </div>
-                ) : files.length === 0 ? (
-                  <div className="text-center py-8 text-white/20 text-xs">
-                    <FolderOpen className="w-6 h-6 mx-auto mb-2 opacity-30" />
-                    No files yet
-                  </div>
-                ) : (
-                  files.map((file) => (
-                    <div key={file.id} className="flex items-center gap-2 px-2 py-2 rounded-lg group hover:bg-white/5">
-                      <FileText className="w-4 h-4 text-blue-400 shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <div className="text-white/80 text-xs font-medium truncate">{file.name}</div>
-                        <div className="text-white/30 text-xs">{formatBytes(file.size)}</div>
-                      </div>
-                      <div className="flex gap-1 opacity-0 group-hover:opacity-100">
-                        <a href={file.url} target="_blank" rel="noopener noreferrer" className="text-white/40 hover:text-white/80">
-                          <Download className="w-3.5 h-3.5" />
-                        </a>
-                        <button onClick={() => deleteFile(file.id)} className="text-white/40 hover:text-red-400">
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Center: Subject info + study tips */}
-        <div className="flex-1 overflow-y-auto p-6">
-          {activeTab === "subjects" && (
-            <div>
-              <div className="mb-6">
-                <div className="text-3xl mb-2">{SUBJECTS.find((s) => s.id === activeSubject)?.icon}</div>
-                <h2 className="text-xl font-bold text-white">{SUBJECTS.find((s) => s.id === activeSubject)?.label}</h2>
-                <p className="text-white/40 text-sm mt-1">
-                  Ask Prof. Elena anything about {SUBJECTS.find((s) => s.id === activeSubject)?.label.toLowerCase()} in the chat panel →
-                </p>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {[
-                  { title: "Ask a Question", desc: "Type your homework question or topic in the chat. Professor Elena will explain it step by step.", icon: "💬" },
-                  { title: "Review Your Work", desc: "Upload a document and ask the professor to review it and give feedback.", icon: "📝" },
-                  { title: "Study Plan", desc: "Ask the professor to create a study plan for an upcoming exam or project.", icon: "📅" },
-                  { title: "Research Help", desc: "Need sources or a summary of a topic? The library has everything.", icon: "🔍" },
-                ].map((tip) => (
-                  <div key={tip.title} className="bg-white/4 border border-white/8 rounded-2xl p-4 hover:border-white/15 transition-colors">
-                    <div className="text-2xl mb-2">{tip.icon}</div>
-                    <div className="text-white font-semibold text-sm mb-1">{tip.title}</div>
-                    <div className="text-white/40 text-xs leading-relaxed">{tip.desc}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {activeTab === "files" && (
-            <div className="flex flex-col items-center justify-center h-full text-center gap-4">
-              <FolderOpen className="w-12 h-12 text-blue-400/40" />
-              <div>
-                <h3 className="text-white font-semibold mb-1">Your study files</h3>
-                <p className="text-white/40 text-sm">Upload PDFs, docs, and notes. Ask the professor to help with them.</p>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* AI Chat panel */}
-        <div className="w-80 shrink-0">
-          <AiChatPanel
-            location="library"
-            personaName="Prof. Elena Vasquez"
-            personaTitle={`${SUBJECTS.find((s) => s.id === activeSubject)?.label} · Head Librarian`}
-            personaAvatar="EV"
-            accentColor="blue"
-            contextData={contextData}
+        {/* Zone panel overlay */}
+        {activeZone && activeZone !== "exit" && (
+          <ZonePanel
+            zone={activeZone}
+            onClose={() => setActiveZone(null)}
+            files={files}
+            loadingFiles={loadingFiles}
+            uploading={uploading}
+            onUpload={handleFileUpload}
+            onDeleteFile={deleteFile}
+            activeSubject={activeSubject}
+            setActiveSubject={setActiveSubject}
           />
-        </div>
+        )}
       </div>
     </div>
   )
