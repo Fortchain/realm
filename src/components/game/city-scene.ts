@@ -109,23 +109,23 @@ export class CityScene extends Phaser.Scene {
 
   private drawOcean() {
     const g = this.add.graphics().setDepth(0)
-    // Deep ocean fills entire world
-    g.fillStyle(0x05101e)
+    // Bright Pacific daylight ocean
+    g.fillStyle(0x4db8e8)
     g.fillRect(0, 0, WORLD_W, WORLD_H)
     // Subtle wave shimmer (horizontal bands)
     for (let y = 0; y < WORLD_H; y += 24) {
-      g.fillStyle(0x0a1e32, (y % 48 === 0) ? 0.5 : 0.2)
+      g.fillStyle(0x7ccef0, (y % 48 === 0) ? 0.3 : 0.12)
       g.fillRect(0, y, WORLD_W, 12)
     }
-    // Animated shimmer overlay
+    // Animated sun sparkle overlay
     const shimmer = this.add.graphics().setDepth(1)
-    shimmer.fillStyle(0x1a5a9e, 0.05)
+    shimmer.fillStyle(0xaae8ff, 0.18)
     for (let x = 20; x < 450; x += 40) {
       for (let y = 200; y < WORLD_H; y += 50) {
         shimmer.fillEllipse(x, y, 28, 7)
       }
     }
-    this.tweens.add({ targets: shimmer, alpha: { from: 0.4, to: 1 }, duration: 2200, yoyo: true, repeat: -1 })
+    this.tweens.add({ targets: shimmer, alpha: { from: 0.5, to: 1 }, duration: 2200, yoyo: true, repeat: -1 })
   }
 
   private drawLand() {
@@ -174,15 +174,15 @@ export class CityScene extends Phaser.Scene {
       3600, 200,
     ]
 
-    g.fillStyle(0x0e1918)
+    g.fillStyle(0xd4e8cc)
     g.fillPoints(this.numArrayToVec2(coastline), true)
 
-    // Slight green tint for residential zones (north county)
-    g.fillStyle(0x0d1a12, 0.4)
+    // Greener tint for residential / north county
+    g.fillStyle(0xc2dba8, 0.5)
     g.fillRect(500, 200, 3000, 700)
 
-    // Downtown area slightly darker/urban
-    g.fillStyle(0x0a0f14, 0.5)
+    // Downtown slightly more urban/gray
+    g.fillStyle(0xbcc4cc, 0.4)
     g.fillRect(680, 1750, 600, 350)
   }
 
@@ -221,18 +221,18 @@ export class CityScene extends Phaser.Scene {
       360, 1560,
     ]
 
-    // Bay base
-    g.fillStyle(0x071828)
+    // Bay base — bright bay blue
+    g.fillStyle(0x3aaed8)
     g.fillPoints(this.numArrayToVec2(bay), true)
 
-    // Bay shimmer
-    g.lineStyle(1, 0x1a4a7a, 0.2)
+    // Bay shimmer ripples
+    g.lineStyle(1, 0x7ccef0, 0.25)
     for (let y = 1600; y < 2900; y += 30) {
       g.lineBetween(380, y, 820, y)
     }
 
-    // Bay border glow
-    g.lineStyle(2, 0x1a5a9e, 0.35)
+    // Bay shoreline
+    g.lineStyle(2, 0x2a88cc, 0.45)
     g.strokePoints(this.numArrayToVec2(bay), true)
   }
 
@@ -255,11 +255,11 @@ export class CityScene extends Phaser.Scene {
       370, 2180,
     ]
 
-    g.fillStyle(0x101e18)
+    g.fillStyle(0xcedec8)
     g.fillPoints(this.numArrayToVec2(coronado), true)
 
     // Coronado streets (simple grid)
-    g.lineStyle(4, 0x171e22, 0.8)
+    g.lineStyle(4, 0xa8b4c0, 0.7)
     for (let gy = 2080; gy < 2600; gy += 45) {
       g.lineBetween(390, gy, 555, gy)
     }
@@ -269,7 +269,7 @@ export class CityScene extends Phaser.Scene {
 
     // "CORONADO" label
     this.add.text(475, 2300, "CORONADO", {
-      fontSize: "11px", color: "#4a7a6a66", fontStyle: "bold", letterSpacing: 2,
+      fontSize: "11px", color: "#2a6a5a99", fontStyle: "bold", letterSpacing: 2,
     }).setOrigin(0.5).setDepth(6).setAngle(-8)
   }
 
@@ -293,19 +293,19 @@ export class CityScene extends Phaser.Scene {
       335, 970,
     ]
 
-    g.fillStyle(0x071828)
+    g.fillStyle(0x3aaed8)
     g.fillPoints(this.numArrayToVec2(bay), true)
 
     // Mission Bay shimmer
-    g.lineStyle(1, 0x1a4a7a, 0.18)
+    g.lineStyle(1, 0x7ccef0, 0.22)
     for (let y = 900; y < 1250; y += 25) {
       g.lineBetween(345, y, 620, y)
     }
-    g.lineStyle(1.5, 0x1a5a9e, 0.3)
+    g.lineStyle(1.5, 0x2a88cc, 0.4)
     g.strokePoints(this.numArrayToVec2(bay), true)
 
     this.add.text(490, 1060, "MISSION\nBAY", {
-      fontSize: "9px", color: "#2a6a9e55", fontStyle: "bold", align: "center", letterSpacing: 1,
+      fontSize: "9px", color: "#1a5a8eaa", fontStyle: "bold", align: "center", letterSpacing: 1,
     }).setOrigin(0.5).setDepth(6)
   }
 
@@ -313,7 +313,7 @@ export class CityScene extends Phaser.Scene {
     const g = this.add.graphics().setDepth(3)
 
     // ── Balboa Park (large, distinctive) ──
-    g.fillStyle(0x0d2210, 0.9)
+    g.fillStyle(0x4aad4a)
     // Irregular park shape
     const bpPoints = [
       840, 1290,  1000, 1270,  1150, 1290,
@@ -323,11 +323,11 @@ export class CityScene extends Phaser.Scene {
     ]
     g.fillPoints(this.numArrayToVec2(bpPoints), true)
     // Park roads (2 main roads through park)
-    g.lineStyle(8, 0x0f1e14, 0.9)
+    g.lineStyle(8, 0x9aaa90, 0.8)
     g.lineBetween(995, 1270, 985, 1740)   // Park Blvd
     g.lineBetween(840, 1510, 1150, 1490)  // El Prado
-    // Park texture dots (trees)
-    g.fillStyle(0x0a1e0d, 0.6)
+    // Park texture dots (darker trees)
+    g.fillStyle(0x2d7a2d, 0.7)
     const treePositions = [
       870, 1340, 920, 1380, 970, 1320, 1040, 1360, 1100, 1310,
       860, 1480, 1060, 1490, 1130, 1450, 880, 1580, 950, 1620,
@@ -337,18 +337,18 @@ export class CityScene extends Phaser.Scene {
       g.fillCircle(treePositions[i], treePositions[i + 1], 18)
     }
     this.add.text(990, 1510, "BALBOA\nPARK", {
-      fontSize: "13px", color: "#1a5a2a88", fontStyle: "bold", align: "center", letterSpacing: 2,
+      fontSize: "13px", color: "#1a6a1acc", fontStyle: "bold", align: "center", letterSpacing: 2,
     }).setOrigin(0.5).setDepth(6)
 
     // ── Mission Bay Park (surrounding the bay) ──
-    g.fillStyle(0x0d2210, 0.5)
+    g.fillStyle(0x5ab85a, 0.7)
     g.fillRect(350, 860, 290, 60)
     g.fillRect(350, 1195, 280, 50)
     g.fillRect(350, 920, 40, 280)
     g.fillRect(600, 890, 50, 330)
 
     // ── Presidio Park ──
-    g.fillStyle(0x0d2210, 0.7)
+    g.fillStyle(0x4aad4a, 0.85)
     g.fillEllipse(660, 1180, 90, 70)
 
     // ── Small neighborhood parks ──
@@ -359,9 +359,9 @@ export class CityScene extends Phaser.Scene {
       { x: 950, y: 540, w: 65, h: 50 },
       { x: 1300, y: 800, w: 80, h: 60 },
     ]) {
-      g.fillStyle(0x0d2210, 0.65)
+      g.fillStyle(0x5ab85a, 0.8)
       g.fillRoundedRect(p.x, p.y, p.w, p.h, 6)
-      g.lineStyle(1, 0x1a4a22, 0.3)
+      g.lineStyle(1, 0x2a8a2a, 0.5)
       g.strokeRoundedRect(p.x, p.y, p.w, p.h, 6)
     }
   }
@@ -376,17 +376,17 @@ export class CityScene extends Phaser.Scene {
     ]
     const BY = WORLD_H
 
-    // Far range
+    // Far range (hazy blue-gray)
     for (const p of peaks) {
-      g.fillStyle(0x1a2535, 0.6)
+      g.fillStyle(0xb8c8d8, 0.55)
       g.fillTriangle(p.x, BY, p.x + p.w / 2, BY - p.h * 1.3, p.x + p.w, BY)
     }
-    // Near range
+    // Near range (warmer brown-gray)
     for (const p of peaks) {
-      g.fillStyle(0x1c2a3c, 0.85)
+      g.fillStyle(0x9aaa9a, 0.8)
       g.fillTriangle(p.x + 30, BY, p.x + p.w / 2, BY - p.h, p.x + p.w - 30, BY)
       // Snow cap
-      g.fillStyle(0xc8d8e8, 0.35)
+      g.fillStyle(0xffffff, 0.7)
       g.fillTriangle(p.x + p.w * 0.3, BY - p.h * 0.72, p.x + p.w / 2, BY - p.h, p.x + p.w * 0.7, BY - p.h * 0.72)
     }
   }
@@ -399,22 +399,23 @@ export class CityScene extends Phaser.Scene {
       390, 200, 345, 310, 300, 450, 283, 570, 318, 692, 375, 815,
       350, 938, 335, 1045, 300, 1175, 260, 1355, 368, 1555,
     ]
-    g.lineStyle(18, 0x9a8060, 0.22)
+    // Sandy beach — bright golden
+    g.lineStyle(22, 0xf0d060, 0.65)
     g.strokePoints(this.numArrayToVec2(beachPoints))
 
-    g.lineStyle(8, 0xc8a870, 0.15)
+    g.lineStyle(10, 0xfae890, 0.5)
     g.strokePoints(this.numArrayToVec2(beachPoints))
 
-    // Foam edge (white)
-    g.lineStyle(3, 0xffffff, 0.06)
+    // Foam edge (white surf)
+    g.lineStyle(3, 0xffffff, 0.6)
     g.strokePoints(this.numArrayToVec2(beachPoints))
 
-    // Beach trees (north coast)
+    // Beach palm trees (north coast) — bright green fronds
     const bTrees = this.add.graphics().setDepth(5)
     for (const [bx, by] of [[420, 250], [410, 350], [400, 500], [380, 640], [420, 750], [400, 860]]) {
-      bTrees.lineStyle(2, 0x7a5a30, 0.7)
+      bTrees.lineStyle(2, 0x8a6a30, 0.9)
       bTrees.lineBetween(bx, by + 14, bx - 3, by - 18)
-      bTrees.fillStyle(0x2d5e2d, 0.7)
+      bTrees.fillStyle(0x3a8a3a, 0.85)
       for (const [fx, fy] of [[-18, -26], [-6, -34], [6, -32], [18, -26], [-6, -24], [12, -22]]) {
         bTrees.lineBetween(bx - 3, by - 18, bx - 3 + fx, by - 18 + fy)
       }
@@ -433,16 +434,16 @@ export class CityScene extends Phaser.Scene {
       845, 1870, 830, 1920,
     ])
     // Freeway shadow
-    g.lineStyle(26, 0x040810, 0.9)
+    g.lineStyle(26, 0x808898, 0.6)
     i5.draw(g, 128)
     // Main freeway lanes
-    g.lineStyle(20, 0x141420, 0.95)
+    g.lineStyle(20, 0x9898b0, 0.95)
     i5.draw(g, 128)
-    // Center stripe
-    g.lineStyle(2, 0x2a2a38, 0.4)
+    // Center stripe (white dashes implied)
+    g.lineStyle(2, 0xffffff, 0.5)
     i5.draw(g, 128)
     // Freeway label
-    this.add.text(862, 1100, "I-5", { fontSize: "9px", color: "#4a4a6655", fontStyle: "bold" }).setOrigin(0.5).setDepth(6)
+    this.add.text(862, 1100, "I-5", { fontSize: "9px", color: "#3a3a5599", fontStyle: "bold" }).setOrigin(0.5).setDepth(6)
 
     // I-8 (east-west through Mission Valley)
     const i8 = new Phaser.Curves.Spline([
@@ -450,13 +451,13 @@ export class CityScene extends Phaser.Scene {
       1100, 1320, 1400, 1325, 1700, 1330,
       2000, 1340, 2400, 1350,
     ])
-    g.lineStyle(22, 0x040810, 0.9)
+    g.lineStyle(22, 0x808898, 0.55)
     i8.draw(g, 128)
-    g.lineStyle(16, 0x141420, 0.95)
+    g.lineStyle(16, 0x9898b0, 0.9)
     i8.draw(g, 128)
-    g.lineStyle(2, 0x2a2a38, 0.4)
+    g.lineStyle(2, 0xffffff, 0.45)
     i8.draw(g, 128)
-    this.add.text(1200, 1316, "I-8", { fontSize: "9px", color: "#4a4a6655", fontStyle: "bold" }).setOrigin(0.5).setDepth(6)
+    this.add.text(1200, 1316, "I-8", { fontSize: "9px", color: "#3a3a5599", fontStyle: "bold" }).setOrigin(0.5).setDepth(6)
 
     // I-15 (inland freeway)
     const i15 = new Phaser.Curves.Spline([
@@ -464,29 +465,29 @@ export class CityScene extends Phaser.Scene {
       1445, 1100, 1445, 1400, 1450, 1700,
       1440, 2000,
     ])
-    g.lineStyle(18, 0x040810, 0.85)
+    g.lineStyle(18, 0x808898, 0.5)
     i15.draw(g, 128)
-    g.lineStyle(13, 0x141420, 0.9)
+    g.lineStyle(13, 0x9898b0, 0.85)
     i15.draw(g, 128)
-    this.add.text(1453, 900, "I-15", { fontSize: "8px", color: "#4a4a6644", fontStyle: "bold" }).setOrigin(0.5).setDepth(6)
+    this.add.text(1453, 900, "I-15", { fontSize: "8px", color: "#3a3a5588", fontStyle: "bold" }).setOrigin(0.5).setDepth(6)
 
     // SR-163 (through Balboa Park — Cabrillo Freeway)
     const sr163 = new Phaser.Curves.Spline([
       960, 1060,  962, 1200,  964, 1350,
       966, 1500,  966, 1650,  958, 1760,
     ])
-    g.lineStyle(14, 0x040810, 0.8)
+    g.lineStyle(14, 0x808898, 0.5)
     sr163.draw(g, 64)
-    g.lineStyle(10, 0x141420, 0.9)
+    g.lineStyle(10, 0x9898b0, 0.85)
     sr163.draw(g, 64)
 
     // SR-56 (east-west north county)
     const sr56 = new Phaser.Curves.Spline([
       890, 490,  1000, 485,  1200, 488,  1500, 492,  1800, 498,
     ])
-    g.lineStyle(12, 0x040810, 0.75)
+    g.lineStyle(12, 0x808898, 0.45)
     sr56.draw(g, 64)
-    g.lineStyle(8, 0x141420, 0.85)
+    g.lineStyle(8, 0x9898b0, 0.8)
     sr56.draw(g, 64)
   }
 
@@ -498,9 +499,9 @@ export class CityScene extends Phaser.Scene {
       430, 200,  415, 340,  390, 480,  388, 620,
       420, 760,  440, 900,  410, 1020, 390, 1160,
     ])
-    g.lineStyle(12, 0x141826, 0.85)
+    g.lineStyle(12, 0xa0a8b8, 0.9)
     pch.draw(g, 64)
-    g.lineStyle(1.5, 0x2a2a44, 0.3)
+    g.lineStyle(1.5, 0xffffff, 0.35)
     pch.draw(g, 64)
 
     // Harbor Drive (waterfront road)
@@ -508,7 +509,7 @@ export class CityScene extends Phaser.Scene {
       375, 1580,  440, 1640,  530, 1710,
       640, 1770,  740, 1830,  800, 1880,
     ])
-    g.lineStyle(14, 0x141826, 0.9)
+    g.lineStyle(14, 0xa0a8b8, 0.9)
     harbor.draw(g, 64)
 
     // Balboa Ave (east-west major)
@@ -517,25 +518,25 @@ export class CityScene extends Phaser.Scene {
       780, 1055,  950, 1060,  1200, 1065,
       1500, 1070,
     ])
-    g.lineStyle(10, 0x141826, 0.8)
+    g.lineStyle(10, 0xa0a8b8, 0.85)
     balboa.draw(g, 64)
 
     // Garnet Ave (Pacific Beach main street)
     const garnet = new Phaser.Curves.Spline([
       360, 820,  430, 818,  530, 822,  640, 820,  750, 820,
     ])
-    g.lineStyle(9, 0x141826, 0.7)
+    g.lineStyle(9, 0xa0a8b8, 0.8)
     garnet.draw(g, 64)
 
     // Rosecrans St (Point Loma)
     const rosecrans = new Phaser.Curves.Spline([
       320, 1100,  380, 1140,  440, 1200,  500, 1280,  560, 1340,
     ])
-    g.lineStyle(9, 0x141826, 0.7)
+    g.lineStyle(9, 0xa0a8b8, 0.8)
     rosecrans.draw(g, 64)
 
     // El Cajon Blvd (east from downtown)
-    g.lineStyle(8, 0x141826, 0.7)
+    g.lineStyle(8, 0xa0a8b8, 0.75)
     g.lineBetween(900, 1760, 1600, 1760)
 
     // Washington St / University Ave
@@ -543,7 +544,7 @@ export class CityScene extends Phaser.Scene {
       720, 1380,  820, 1375,  960, 1370,
       1100, 1370, 1300, 1375,
     ])
-    g.lineStyle(8, 0x141826, 0.7)
+    g.lineStyle(8, 0xa0a8b8, 0.75)
     univAve.draw(g, 64)
 
     // Genesee Ave (UTC to La Jolla)
@@ -552,11 +553,11 @@ export class CityScene extends Phaser.Scene {
       680, 700,  670, 840,  665, 960,
       660, 1080, 660, 1200, 660, 1380,
     ])
-    g.lineStyle(9, 0x141826, 0.75)
+    g.lineStyle(9, 0xa0a8b8, 0.8)
     genesee.draw(g, 64)
 
     // Miramar Rd
-    g.lineStyle(8, 0x141826, 0.65)
+    g.lineStyle(8, 0xa0a8b8, 0.7)
     g.lineBetween(840, 680, 1600, 685)
 
     // Torrey Pines Rd (La Jolla)
@@ -564,7 +565,7 @@ export class CityScene extends Phaser.Scene {
       380, 440,  420, 500,  490, 560,
       560, 620,  620, 700,  640, 800,
     ])
-    g.lineStyle(8, 0x141826, 0.65)
+    g.lineStyle(8, 0xa0a8b8, 0.7)
     tpRd.draw(g, 64)
   }
 
@@ -582,37 +583,37 @@ export class CityScene extends Phaser.Scene {
     const streets = ["A St", "B St", "C St", "Broadway", "E St", "F St", "Market"]
     for (let i = 0; i < 7; i++) {
       const y = dtOriginY + i * 44
-      const offset = i * 3 // slight diagonal
-      g.lineStyle(9, 0x131320, 0.9)
+      const offset = i * 3
+      g.lineStyle(9, 0x9090a8, 0.9)
       g.lineBetween(dtOriginX - offset, y, dtOriginX + dtW - offset, y)
-      g.lineStyle(1, 0x252535, 0.35)
+      g.lineStyle(1, 0xffffff, 0.3)
       g.lineBetween(dtOriginX - offset, y, dtOriginX + dtW - offset, y)
     }
 
     // Numbered/lettered avenues (vertical in downtown)
     for (let i = 0; i < 8; i++) {
       const x = dtOriginX + i * 58
-      g.lineStyle(9, 0x131320, 0.9)
+      g.lineStyle(9, 0x9090a8, 0.9)
       g.lineBetween(x, dtOriginY - 20, x, dtOriginY + dtH + 20)
-      g.lineStyle(1, 0x252535, 0.3)
+      g.lineStyle(1, 0xffffff, 0.28)
       g.lineBetween(x, dtOriginY - 20, x, dtOriginY + dtH + 20)
     }
 
     // Sidewalk texture
-    g.lineStyle(1, 0x1e1e30, 0.2)
+    g.lineStyle(1, 0xb8b8cc, 0.35)
     for (let i = 0; i < 7; i++) {
       g.lineBetween(dtOriginX, dtOriginY + i * 44 + 5, dtOriginX + dtW, dtOriginY + i * 44 + 5)
     }
 
     // Gaslamp district (south downtown — slightly denser)
-    g.lineStyle(7, 0x131320, 0.9)
+    g.lineStyle(7, 0x9090a8, 0.85)
     for (let i = 0; i < 4; i++) {
       const y = dtOriginY + 180 + i * 32
       g.lineBetween(dtOriginX + 60, y, dtOriginX + 340, y)
     }
 
     // Broadway label
-    this.add.text(910, 1880, "Broadway", { fontSize: "8px", color: "#3a3a5544", fontStyle: "italic" }).setOrigin(0.5).setDepth(8).setAngle(-1)
+    this.add.text(910, 1880, "Broadway", { fontSize: "8px", color: "#3a3a55aa", fontStyle: "italic" }).setOrigin(0.5).setDepth(8).setAngle(-1)
   }
 
   private drawResidentialRoads() {
@@ -648,14 +649,14 @@ export class CityScene extends Phaser.Scene {
       [940, 1140,  938, 1200,  938, 1250],
     ]
 
-    g.lineStyle(6, 0x131826, 0.75)
+    g.lineStyle(6, 0xb0b8c8, 0.8)
     for (const road of ncRoads) {
       const spline = new Phaser.Curves.Spline(road)
       spline.draw(g, 32)
     }
 
     // North County inland grid (less organic, larger blocks)
-    g.lineStyle(6, 0x131826, 0.6)
+    g.lineStyle(6, 0xb0b8c8, 0.65)
     for (let rx = 1200; rx < 2400; rx += 120) {
       g.lineBetween(rx, 200, rx, 780)
     }
@@ -669,23 +670,23 @@ export class CityScene extends Phaser.Scene {
 
     // Embarcadero marina (downtown waterfront)
     const mx = 590, my = 1740
-    g.fillStyle(0x071828, 0.8)
+    g.fillStyle(0x3aaed8, 0.85)
     g.fillRect(mx, my, 180, 90)
 
     // Boat slips
-    g.lineStyle(2, 0x2a5a8a, 0.5)
+    g.lineStyle(2, 0x1a78aa, 0.6)
     for (let i = 0; i < 8; i++) {
       g.lineBetween(mx + 10 + i * 20, my, mx + 10 + i * 20, my + 80)
     }
     g.lineBetween(mx, my + 40, mx + 180, my + 40)
 
-    // Boats (small rectangles)
-    g.fillStyle(0xeee8d0, 0.5)
+    // Boats (bright white hulls)
+    g.fillStyle(0xfff8e8, 0.85)
     for (let i = 0; i < 7; i++) {
       g.fillRect(mx + 13 + i * 20, my + 44, 8, 28)
     }
 
-    this.add.text(mx + 90, my - 14, "EMBARCADERO", { fontSize: "8px", color: "#2a6a9e55", fontStyle: "bold", letterSpacing: 1 }).setOrigin(0.5).setDepth(7)
+    this.add.text(mx + 90, my - 14, "EMBARCADERO", { fontSize: "8px", color: "#1a5a8eaa", fontStyle: "bold", letterSpacing: 1 }).setOrigin(0.5).setDepth(7)
   }
 
   private drawCoronadoBridge() {
@@ -701,46 +702,46 @@ export class CityScene extends Phaser.Scene {
 
     const bvec = bridgePoints.map((p) => new Phaser.Math.Vector2(p.x, p.y))
     // Bridge shadow
-    g.lineStyle(14, 0x000000, 0.4)
+    g.lineStyle(14, 0x7080a0, 0.35)
     g.strokePoints(bvec)
-    // Bridge deck
-    g.lineStyle(10, 0x2a2a4a, 0.9)
+    // Bridge deck (steel gray-blue)
+    g.lineStyle(10, 0x8898bc, 0.95)
     g.strokePoints(bvec)
     // Bridge railing
-    g.lineStyle(2, 0x5a6aaa, 0.5)
+    g.lineStyle(2, 0xb0bcd8, 0.6)
     g.strokePoints(bvec)
     // Tower supports
     for (const { x, y } of [{ x: 700, y: 2110 }, { x: 580, y: 2165 }]) {
-      g.lineStyle(3, 0x4a5a8a, 0.6)
+      g.lineStyle(3, 0x8898bc, 0.75)
       g.lineBetween(x, y - 30, x, y + 30)
       // Cables
       for (let i = -5; i <= 5; i++) {
-        g.lineStyle(1, 0x4a5a8a, 0.25)
+        g.lineStyle(1, 0x8898bc, 0.35)
         g.lineBetween(x, y - 28, x + i * 20, y + 12)
       }
     }
 
-    this.add.text(635, 2140, "Coronado Bridge", { fontSize: "8px", color: "#5a6aaa55", fontStyle: "italic" }).setOrigin(0.5).setDepth(7).setAngle(-14)
+    this.add.text(635, 2140, "Coronado Bridge", { fontSize: "8px", color: "#4a5a8acc", fontStyle: "italic" }).setOrigin(0.5).setDepth(7).setAngle(-14)
   }
 
   private drawNeighborhoodLabels() {
     const labels = [
-      { text: "DOWNTOWN",       x: 910,  y: 1990, size: "14px", color: "#4a6a8a55", angle: 0 },
-      { text: "GASLAMP",        x: 880,  y: 2070, size: "9px",  color: "#4a6a8a44", angle: 0 },
-      { text: "HILLCREST",      x: 820,  y: 1280, size: "10px", color: "#3a5a3a55", angle: 0 },
-      { text: "NORTH PARK",     x: 1060, y: 1300, size: "9px",  color: "#3a5a3a44", angle: 0 },
-      { text: "MISSION VALLEY", x: 1100, y: 1340, size: "9px",  color: "#4a4a6a44", angle: 0 },
-      { text: "PACIFIC BEACH",  x: 450,  y: 750,  size: "10px", color: "#3a5a6a55", angle: 0 },
-      { text: "OCEAN BEACH",    x: 400,  y: 1050, size: "9px",  color: "#3a5a6a44", angle: 0 },
-      { text: "POINT LOMA",     x: 320,  y: 1260, size: "9px",  color: "#3a5a6a44", angle: -15 },
-      { text: "LA JOLLA",       x: 380,  y: 550,  size: "11px", color: "#4a6a5a55", angle: 0 },
-      { text: "UTC",            x: 750,  y: 350,  size: "9px",  color: "#4a4a6a44", angle: 0 },
-      { text: "CARMEL VALLEY",  x: 1000, y: 250,  size: "9px",  color: "#4a5a3a44", angle: 0 },
-      { text: "DEL MAR",        x: 430,  y: 280,  size: "9px",  color: "#3a5a4a44", angle: 0 },
-      { text: "MIRAMAR",        x: 1200, y: 660,  size: "9px",  color: "#4a4a4a44", angle: 0 },
-      { text: "NORTH COUNTY",   x: 1700, y: 420,  size: "12px", color: "#4a4a3a44", angle: 0 },
-      { text: "EAST COUNTY",    x: 2400, y: 1200, size: "12px", color: "#4a4a3a33", angle: 0 },
-      { text: "NATIONAL CITY",  x: 870,  y: 2500, size: "9px",  color: "#4a4a4a44", angle: 0 },
+      { text: "DOWNTOWN",       x: 910,  y: 1990, size: "14px", color: "#2a4a6acc", angle: 0 },
+      { text: "GASLAMP",        x: 880,  y: 2070, size: "9px",  color: "#2a4a6aaa", angle: 0 },
+      { text: "HILLCREST",      x: 820,  y: 1280, size: "10px", color: "#2a5a2acc", angle: 0 },
+      { text: "NORTH PARK",     x: 1060, y: 1300, size: "9px",  color: "#2a5a2aaa", angle: 0 },
+      { text: "MISSION VALLEY", x: 1100, y: 1340, size: "9px",  color: "#3a3a6aaa", angle: 0 },
+      { text: "PACIFIC BEACH",  x: 450,  y: 750,  size: "10px", color: "#1a5a6acc", angle: 0 },
+      { text: "OCEAN BEACH",    x: 400,  y: 1050, size: "9px",  color: "#1a5a6aaa", angle: 0 },
+      { text: "POINT LOMA",     x: 320,  y: 1260, size: "9px",  color: "#1a5a6aaa", angle: -15 },
+      { text: "LA JOLLA",       x: 380,  y: 550,  size: "11px", color: "#2a5a4acc", angle: 0 },
+      { text: "UTC",            x: 750,  y: 350,  size: "9px",  color: "#3a3a6aaa", angle: 0 },
+      { text: "CARMEL VALLEY",  x: 1000, y: 250,  size: "9px",  color: "#3a5a2aaa", angle: 0 },
+      { text: "DEL MAR",        x: 430,  y: 280,  size: "9px",  color: "#2a5a3aaa", angle: 0 },
+      { text: "MIRAMAR",        x: 1200, y: 660,  size: "9px",  color: "#3a3a4aaa", angle: 0 },
+      { text: "NORTH COUNTY",   x: 1700, y: 420,  size: "12px", color: "#3a4a2acc", angle: 0 },
+      { text: "EAST COUNTY",    x: 2400, y: 1200, size: "12px", color: "#3a3a2aaa", angle: 0 },
+      { text: "NATIONAL CITY",  x: 870,  y: 2500, size: "9px",  color: "#3a3a4aaa", angle: 0 },
     ]
 
     for (const l of labels) {
@@ -763,9 +764,9 @@ export class CityScene extends Phaser.Scene {
       [730, 2080, 55, 45], [1060, 2080, 60, 45],
     ]
     for (const [x, y, w, h] of dtBlocks) {
-      g.fillStyle(0x0e1520, 0.8)
+      g.fillStyle(0xdce0e8, 0.9)
       g.fillRect(x, y, w, h)
-      g.lineStyle(0.5, 0x2a3a4a, 0.3)
+      g.lineStyle(0.5, 0xa8b0bc, 0.5)
       g.strokeRect(x, y, w, h)
     }
 
@@ -775,7 +776,7 @@ export class CityScene extends Phaser.Scene {
         if (Math.random() > 0.35) {
           const bw = 35 + Math.floor(Math.sin(bx * by) * 8 + 8)
           const bh = 30 + Math.floor(Math.cos(bx + by) * 6 + 6)
-          g.fillStyle(0x0d1610, 0.6)
+          g.fillStyle(0xe0e8d8, 0.7)
           g.fillRect(bx, by, bw, bh)
         }
       }
@@ -785,10 +786,10 @@ export class CityScene extends Phaser.Scene {
     for (let bx = 750; bx < 1400; bx += 85) {
       for (let by = 230; by < 550; by += 75) {
         if (Math.random() > 0.4) {
-          g.fillStyle(0x0e1510, 0.5)
+          g.fillStyle(0xf0f4ec, 0.8)
           g.fillRect(bx, by, 28, 24)
-          // Roof peak hint
-          g.lineStyle(1, 0x1a2818, 0.4)
+          // Roof peak (warm terracotta/red)
+          g.lineStyle(1, 0xc06040, 0.6)
           g.lineBetween(bx, by, bx + 14, by - 8)
           g.lineBetween(bx + 14, by - 8, bx + 28, by)
         }
@@ -799,7 +800,7 @@ export class CityScene extends Phaser.Scene {
     for (let bx = 400; bx < 760; bx += 65) {
       for (let by = 480; by < 950; by += 60) {
         if (Math.random() > 0.45) {
-          g.fillStyle(0x0d1612, 0.55)
+          g.fillStyle(0xe8f0e8, 0.65)
           g.fillRect(bx, by, 30, 26)
         }
       }
@@ -824,9 +825,9 @@ export class CityScene extends Phaser.Scene {
     const g = this.add.graphics().setDepth(9)
     const { x, y, w, h, color } = b
 
-    // Shadow
-    g.fillStyle(0x000000, 0.55)
-    g.fillRect(x + 10, y + 10, w, h + FACADE)
+    // Shadow (soft daylight shadow)
+    g.fillStyle(0x000000, 0.18)
+    g.fillRect(x + 8, y + 8, w, h + FACADE)
 
     if (b.style === "library") {
       this.drawLibraryExterior(g, x, y, w, h, color)
@@ -843,131 +844,136 @@ export class CityScene extends Phaser.Scene {
     // OPEN badge
     const badge = this.add.text(x + w / 2, y - 12, "● OPEN", {
       fontSize: "8px", color: `#${color.toString(16).padStart(6, "0")}`, fontStyle: "bold",
-      backgroundColor: "#0a0f14cc", padding: { x: 6, y: 3 },
+      backgroundColor: "#ffffffcc", padding: { x: 6, y: 3 },
     }).setOrigin(0.5, 1).setDepth(10)
     this.tweens.add({ targets: badge, alpha: { from: 1, to: 0.3 }, duration: 1400, yoyo: true, repeat: -1 })
 
     this.add.text(x + w / 2, y + h + FACADE + 6, b.name, {
-      fontSize: "10px", color: "#ffffff88", align: "center", fontStyle: "bold",
+      fontSize: "10px", color: "#1a2a3acc", align: "center", fontStyle: "bold",
     }).setOrigin(0.5, 0).setDepth(10)
 
     this.add.text(x + w / 2, y + h + FACADE + 18, b.neighborhood, {
-      fontSize: "8px", color: "#ffffff33", align: "center",
+      fontSize: "8px", color: "#3a4a5a88", align: "center",
     }).setOrigin(0.5, 0).setDepth(10)
   }
 
   private drawLibraryExterior(g: Phaser.GameObjects.Graphics, x: number, y: number, w: number, h: number, color: number) {
-    // Marble roof
-    g.fillStyle(0x2a3560, 0.95)
+    // Marble body — bright cream white
+    g.fillStyle(0xf4f0e8, 1)
     g.fillRect(x, y, w, h)
-    g.lineStyle(1, 0x3a4870, 0.3)
+    g.lineStyle(1, 0xd8cfc0, 0.5)
     for (let lx = x + 20; lx < x + w; lx += 20) g.lineBetween(lx, y, lx, y + h)
     for (let ly = y + 20; ly < y + h; ly += 20) g.lineBetween(x, ly, x + w, ly)
-    // Pediment
-    g.fillStyle(0x3a5090, 0.7)
+    // Pediment (blue)
+    g.fillStyle(0x4a6ab8, 0.85)
     g.fillTriangle(x + w * 0.15, y, x + w / 2, y - 28, x + w * 0.85, y)
-    g.lineStyle(2, color, 0.8)
+    g.lineStyle(2, color, 0.9)
     g.strokeTriangle(x + w * 0.15, y, x + w / 2, y - 28, x + w * 0.85, y)
-    // Columns on roof edge
+    // Columns (bright white with shadow)
     for (let i = 0; i <= 7; i++) {
       const cx = x + 12 + (i * (w - 24)) / 7
-      g.fillStyle(0x8899cc, 0.8)
+      g.fillStyle(0xffffff, 1)
       g.fillRect(cx - 4, y + h - 16, 8, 16)
+      g.lineStyle(1, 0xc8d0e0, 0.6)
+      g.strokeRect(cx - 4, y + h - 16, 8, 16)
     }
     // South facade
-    g.fillStyle(0x1e2848, 1)
+    g.fillStyle(0xeceaf4, 1)
     g.fillRect(x, y + h, w, FACADE + 12)
-    g.lineStyle(2, color, 0.7)
+    g.lineStyle(2, color, 0.75)
     g.strokeRect(x, y + h, w, FACADE + 12)
     for (let i = 0; i <= 7; i++) {
       const cx = x + 12 + (i * (w - 24)) / 7
-      g.lineStyle(1.5, 0x8899cc, 0.65)
+      g.lineStyle(1.5, 0x8899cc, 0.5)
       g.lineBetween(cx, y + h, cx, y + h + FACADE + 12)
     }
     // Steps
-    g.fillStyle(0x3a4870, 0.8)
+    g.fillStyle(0xd8d4e8, 0.9)
     g.fillRect(x + 8, y + h + FACADE + 12, w - 16, 7)
-    // Doors
+    // Doors (blue glass)
     const dX = x + w / 2 - 13
-    g.fillStyle(0x5577bb, 0.85)
+    g.fillStyle(0x6688dd, 0.7)
     g.fillRect(dX, y + h + 3, 12, FACADE + 4)
     g.fillRect(dX + 14, y + h + 3, 12, FACADE + 4)
-    g.lineStyle(1, color, 0.7)
+    g.lineStyle(1, color, 0.8)
     g.strokeRect(dX, y + h + 3, 26, FACADE + 4)
     this.add.text(x + w / 2, y + h / 2, "CITY\nLIBRARY", {
-      fontSize: "9px", color: "#8899ccbb", align: "center", fontStyle: "bold",
+      fontSize: "9px", color: "#3a5a9acc", align: "center", fontStyle: "bold",
     }).setOrigin(0.5).setDepth(10)
   }
 
   private drawBankExterior(g: Phaser.GameObjects.Graphics, x: number, y: number, w: number, h: number, color: number) {
-    g.fillStyle(0x0d2a20, 0.95)
+    // Light mint-white building
+    g.fillStyle(0xedfff6, 1)
     g.fillRect(x, y, w, h)
-    g.lineStyle(1, 0x1a4a30, 0.35)
+    g.lineStyle(1, 0xb8e8cc, 0.5)
     for (let lx = x + 16; lx < x + w; lx += 16) g.lineBetween(lx, y, lx, y + h)
     for (let ly = y + 16; ly < y + h; ly += 16) g.lineBetween(x, ly, x + w, ly)
-    // Art deco crown
-    g.fillStyle(color, 0.2)
+    // Art deco crown (green)
+    g.fillStyle(color, 0.6)
     g.fillRect(x + 20, y - 10, w - 40, 10)
     g.fillRect(x + 38, y - 18, w - 76, 8)
     g.fillRect(x + 56, y - 24, w - 112, 6)
     // Facade
-    g.fillStyle(0x081a12, 0.95)
+    g.fillStyle(0xe0f8ec, 1)
     g.fillRect(x, y + h, w, FACADE)
-    g.lineStyle(2, color, 0.7)
+    g.lineStyle(2, color, 0.8)
     g.strokeRect(x, y + h, w, FACADE)
     // Revolving door
-    g.fillStyle(0x66aa88, 0.3)
+    g.fillStyle(0x88ddaa, 0.45)
     g.fillCircle(x + w / 2, y + h + FACADE / 2 + 2, 13)
-    g.lineStyle(1, color, 0.5)
+    g.lineStyle(1, color, 0.7)
     g.strokeCircle(x + w / 2, y + h + FACADE / 2 + 2, 13)
-    g.lineStyle(1, color, 0.4)
+    g.lineStyle(1, color, 0.5)
     g.lineBetween(x + w / 2 - 13, y + h + FACADE / 2 + 2, x + w / 2 + 13, y + h + FACADE / 2 + 2)
     g.lineBetween(x + w / 2, y + h + 2, x + w / 2, y + h + FACADE + 2)
+    // Windows
     for (const wx of [-50, -22, 22, 50]) {
-      g.fillStyle(color, 0.3)
+      g.fillStyle(color, 0.25)
       g.fillRect(x + w / 2 + wx - 9, y + h + 4, 18, 18)
-      g.lineStyle(1, color, 0.5)
+      g.lineStyle(1, color, 0.6)
       g.strokeRect(x + w / 2 + wx - 9, y + h + 4, 18, 18)
     }
     this.add.text(x + w / 2, y + h / 2, "FIRST REALM\nBANK", {
-      fontSize: "9px", color: "#10b98199", align: "center", fontStyle: "bold",
+      fontSize: "9px", color: "#0d7a4acc", align: "center", fontStyle: "bold",
     }).setOrigin(0.5).setDepth(10)
   }
 
   private drawStandardExterior(g: Phaser.GameObjects.Graphics, x: number, y: number, w: number, h: number, color: number) {
-    g.fillStyle(color, 0.1)
+    // Light warm-white building
+    g.fillStyle(0xf4f4f0, 1)
     g.fillRect(x, y, w, h)
-    g.lineStyle(1.5, color, 0.35)
+    g.lineStyle(1.5, color, 0.5)
     g.strokeRect(x, y, w, h)
-    g.lineStyle(1, color, 0.06)
+    g.lineStyle(1, color, 0.12)
     for (let lx = x + 18; lx < x + w; lx += 18) g.lineBetween(lx, y, lx, y + h)
-    g.fillStyle(color, 0.07)
+    g.fillStyle(0xeeeef0, 1)
     g.fillRect(x, y + h, w, FACADE)
-    g.lineStyle(1, color, 0.3)
+    g.lineStyle(1, color, 0.45)
     g.strokeRect(x, y + h, w, FACADE)
     const numW = Math.floor(w / 50)
     const gap = (w - numW * 16) / (numW + 1)
     for (let i = 0; i < numW; i++) {
       const wx = x + gap + i * (16 + gap)
-      g.fillStyle(color, 0.22)
+      g.fillStyle(color, 0.3)
       g.fillRect(wx, y + h + 5, 16, 16)
-      g.lineStyle(1, color, 0.45)
+      g.lineStyle(1, color, 0.55)
       g.strokeRect(wx, y + h + 5, 16, 16)
     }
-    g.fillStyle(color, 0.18)
+    g.fillStyle(color, 0.25)
     g.fillRect(x + w / 2 - 9, y + h + 3, 18, FACADE - 3)
-    g.lineStyle(1, color, 0.35)
+    g.lineStyle(1, color, 0.5)
     g.strokeRect(x + w / 2 - 9, y + h + 3, 18, FACADE - 3)
   }
 
   private drawLockedBuilding(b: BuildingDef) {
     const g = this.add.graphics().setDepth(8)
     const { x, y, w, h, color } = b
-    g.fillStyle(color, 0.035)
+    g.fillStyle(0xe8e8ee, 0.85)
     g.fillRect(x, y, w, h + FACADE)
-    g.lineStyle(1, color, 0.1)
+    g.lineStyle(1, color, 0.2)
     g.strokeRect(x, y, w, h + FACADE)
-    g.lineStyle(1, color, 0.04)
+    g.lineStyle(1, color, 0.07)
     for (let d = -(h + FACADE); d < w; d += 30) {
       const sx = x + Math.max(0, d)
       const sy = y + Math.max(0, -d)
@@ -975,12 +981,12 @@ export class CityScene extends Phaser.Scene {
       const ey = y + Math.max(0, -d) + (ex - sx)
       g.lineBetween(sx, sy, ex, ey)
     }
-    this.add.text(x + w / 2, y + h / 2 - 5, "🔒", { fontSize: "18px" }).setOrigin(0.5).setDepth(9).setAlpha(0.18)
+    this.add.text(x + w / 2, y + h / 2 - 5, "🔒", { fontSize: "18px" }).setOrigin(0.5).setDepth(9).setAlpha(0.35)
     this.add.text(x + w / 2, y + h + FACADE + 6, b.name, {
-      fontSize: "9px", color: "#ffffff22", align: "center",
+      fontSize: "9px", color: "#3a3a5a66", align: "center",
     }).setOrigin(0.5, 0).setDepth(9)
     this.add.text(x + w / 2, y + h + FACADE + 17, b.neighborhood, {
-      fontSize: "8px", color: "#ffffff15", align: "center",
+      fontSize: "8px", color: "#3a3a5a44", align: "center",
     }).setOrigin(0.5, 0).setDepth(9)
   }
 
@@ -1080,7 +1086,7 @@ export class CityScene extends Phaser.Scene {
       this.cameras.main.width / 2,
       this.cameras.main.height - 50,
       "",
-      { fontSize: "13px", color: "#ffffff", backgroundColor: "#1a1a2eee", padding: { x: 14, y: 8 } }
+      { fontSize: "13px", color: "#1a1a3e", backgroundColor: "#ffffffee", padding: { x: 14, y: 8 } }
     ).setOrigin(0.5, 1).setScrollFactor(0).setDepth(30).setAlpha(0)
   }
 
