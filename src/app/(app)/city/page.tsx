@@ -2,13 +2,16 @@
 
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
-import { Smartphone, Bell, Sparkles, LogOut, Zap, Users, Building2 } from "lucide-react"
+import { Smartphone, Bell, Sparkles, LogOut, Zap, Users, Building2, Map, LayoutGrid } from "lucide-react"
 import { useClerk } from "@clerk/nextjs"
 import { motion, AnimatePresence } from "framer-motion"
+import dynamic from "next/dynamic"
 import { CityMap } from "@/components/city/city-map"
 import { Phone } from "@/components/phone/phone"
 import { usePhoneStore } from "@/store/phone"
 import { BUILDINGS } from "@/lib/buildings"
+
+const GameCanvas = dynamic(() => import("@/components/game/game-canvas"), { ssr: false })
 
 interface User {
   id: string
@@ -25,6 +28,7 @@ export default function CityPage() {
   const [time, setTime] = useState(new Date())
   const [showUserMenu, setShowUserMenu] = useState(false)
   const [entered, setEntered] = useState(false)
+  const [viewMode, setViewMode] = useState<"game" | "map">("game")
 
   useEffect(() => {
     async function init() {
@@ -51,7 +55,6 @@ export default function CityPage() {
     return () => clearInterval(timer)
   }, [])
 
-  // Entrance animation
   useEffect(() => {
     setTimeout(() => setEntered(true), 100)
   }, [])
@@ -90,13 +93,11 @@ export default function CityPage() {
 
           {/* Center HUD: stats */}
           <div className="hidden sm:flex items-center gap-5">
-            {/* Live clock */}
             <div className="text-center">
               <div className="text-white/80 font-mono text-sm font-semibold leading-none">{timeStr}</div>
               <div className="text-white/25 text-xs mt-0.5">{dateStr}</div>
             </div>
             <div className="w-px h-6 bg-white/10" />
-            {/* City stats */}
             <div className="flex items-center gap-1.5 text-white/40 text-xs">
               <Building2 className="w-3.5 h-3.5" />
               <span>{availableBuildings} districts open</span>
@@ -109,6 +110,32 @@ export default function CityPage() {
 
           {/* Right HUD: actions */}
           <div className="flex items-center gap-2 shrink-0">
+            {/* View toggle */}
+            <div className="flex items-center bg-white/5 border border-white/10 rounded-xl p-1 gap-1">
+              <button
+                onClick={() => setViewMode("game")}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
+                  viewMode === "game"
+                    ? "bg-indigo-600/40 text-indigo-300 border border-indigo-500/40"
+                    : "text-white/30 hover:text-white/60"
+                }`}
+              >
+                <Map className="w-3 h-3" />
+                <span className="hidden sm:inline">World</span>
+              </button>
+              <button
+                onClick={() => setViewMode("map")}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
+                  viewMode === "map"
+                    ? "bg-indigo-600/40 text-indigo-300 border border-indigo-500/40"
+                    : "text-white/30 hover:text-white/60"
+                }`}
+              >
+                <LayoutGrid className="w-3 h-3" />
+                <span className="hidden sm:inline">Grid</span>
+              </button>
+            </div>
+
             {/* Notifications */}
             <button className="relative p-2 text-white/30 hover:text-white/70 rounded-xl hover:bg-white/5 transition-colors">
               <Bell className="w-4 h-4" />
@@ -184,9 +211,30 @@ export default function CityPage() {
         )}
       </AnimatePresence>
 
-      {/* Main city */}
+      {/* Main content */}
       <main className="max-w-5xl mx-auto px-4 sm:px-6 py-8">
-        <CityMap />
+        {viewMode === "game" ? (
+          <div className="relative">
+            {/* WASD hint */}
+            <motion.div
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 1.2 }}
+              className="flex items-center justify-center gap-2 mb-4 text-white/25 text-xs"
+            >
+              <span className="bg-white/8 border border-white/10 rounded px-2 py-0.5 font-mono">W</span>
+              <span className="bg-white/8 border border-white/10 rounded px-2 py-0.5 font-mono">A</span>
+              <span className="bg-white/8 border border-white/10 rounded px-2 py-0.5 font-mono">S</span>
+              <span className="bg-white/8 border border-white/10 rounded px-2 py-0.5 font-mono">D</span>
+              <span className="mx-1">to move</span>
+              <span className="bg-white/8 border border-white/10 rounded px-2 py-0.5 font-mono">E</span>
+              <span>to enter</span>
+            </motion.div>
+            <GameCanvas displayName={user?.displayName ?? "You"} />
+          </div>
+        ) : (
+          <CityMap />
+        )}
       </main>
 
       {/* Bottom status bar */}
