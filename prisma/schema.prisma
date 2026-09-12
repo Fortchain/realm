@@ -1,0 +1,101 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id             String   @id @default(cuid())
+  clerkId        String   @unique
+  email          String   @unique
+  displayName    String?
+  avatarUrl      String?
+  city           String?
+  bio            String?
+  onboardingDone Boolean  @default(false)
+
+  messages       Message[]    @relation("SentMessages")
+  receivedMessages Message[]  @relation("ReceivedMessages")
+  files          RealmFile[]
+  todos          Todo[]
+  bankConnections BankConnection[]
+  aiConversations AiConversation[]
+  presences      BuildingPresence[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Real-time presence: who is in which building
+model BuildingPresence {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  building   String   // "bank" | "library" | "gym" | "city"
+  lastSeen   DateTime @default(now())
+
+  @@unique([userId, building])
+}
+
+model Message {
+  id         String   @id @default(cuid())
+  fromUserId String
+  toUserId   String
+  content    String
+  read       Boolean  @default(false)
+  from       User     @relation("SentMessages", fields: [fromUserId], references: [id], onDelete: Cascade)
+  to         User     @relation("ReceivedMessages", fields: [toUserId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+}
+
+model RealmFile {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  url       String
+  size      Int
+  mimeType  String
+  folder    String   @default("general") // "library" | "bank" | "projects" | "general"
+  tags      String[]
+  createdAt DateTime @default(now())
+}
+
+model Todo {
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title       String
+  category    String    @default("task") // "homework" | "chore" | "errand" | "prescription" | "task" | "reminder"
+  dueDate     DateTime?
+  completed   Boolean   @default(false)
+  priority    String    @default("medium") // "low" | "medium" | "high"
+  createdAt   DateTime  @default(now())
+}
+
+model BankConnection {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken     String
+  itemId          String   @unique
+  institutionName String?
+  institutionId   String?
+  createdAt       DateTime @default(now())
+}
+
+model AiConversation {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  location    String   // "bank" | "library" | "gym" | "home"
+  personaName String
+  messages    Json     // [{role: "user"|"assistant", content: string}]
+  updatedAt   DateTime @updatedAt
+  createdAt   DateTime @default(now())
+
+  @@unique([userId, location])
+}
