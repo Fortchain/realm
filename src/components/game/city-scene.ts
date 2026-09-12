@@ -1,270 +1,803 @@
 import Phaser from "phaser"
 
-// World layout: ocean borders city on west/south, mountains to north/east
-const WORLD_W = 1600
-const WORLD_H = 1300
-const OCEAN_W = 155   // west/south ocean strip width
-const MOUNTAIN_H = 160 // north mountain strip height
+// ── World ─────────────────────────────────────────────────────────────────
+// Stylized San Diego: Pacific coast runs left edge, bay cuts in from south,
+// downtown is center-south, Balboa Park north of downtown, Mission Bay
+// northwest, La Jolla coast north, North County suburban sprawl upper half.
+const WORLD_W = 3600
+const WORLD_H = 3000
+const PLAYER_SPEED = 220
+const ENTER_RADIUS = 110
 
-const PLAYER_SPEED = 210
-const ENTER_RADIUS = 105
-
+// ── Building definitions ──────────────────────────────────────────────────
 interface BuildingDef {
   id: string
   name: string
-  x: number
-  y: number
-  w: number
-  h: number
+  x: number; y: number; w: number; h: number
   color: number
   available: boolean
   href: string
   style?: "library" | "bank" | "standard"
+  neighborhood: string
 }
 
-// Building roof (h) + south facade (FACADE = 32) drawn in 3/4 RPG view
-const FACADE = 32
+const FACADE = 30
+
 const BUILDINGS: BuildingDef[] = [
-  { id: "bank",       name: "First Realm Bank",   x: 285,  y: 270,  w: 215, h: 165, color: 0x10b981, available: true,  href: "/buildings/bank",       style: "bank"     },
-  { id: "library",    name: "City Library",        x: 590,  y: 270,  w: 220, h: 175, color: 0x3b82f6, available: true,  href: "/buildings/library",    style: "library"  },
-  { id: "university", name: "Realm University",    x: 900,  y: 270,  w: 215, h: 165, color: 0x8b5cf6, available: false, href: "/buildings/university", style: "standard" },
-  { id: "gym",        name: "Iron District Gym",   x: 285,  y: 545,  w: 215, h: 165, color: 0xf97316, available: false, href: "/buildings/gym",        style: "standard" },
-  { id: "home",       name: "Your Home",           x: 590,  y: 545,  w: 215, h: 165, color: 0xf59e0b, available: false, href: "/buildings/home",       style: "standard" },
-  { id: "hospital",   name: "Realm Medical",       x: 900,  y: 545,  w: 215, h: 165, color: 0xef4444, available: false, href: "/buildings/hospital",   style: "standard" },
-  { id: "mall",       name: "The Mall",            x: 285,  y: 820,  w: 215, h: 165, color: 0xec4899, available: false, href: "/buildings/mall",       style: "standard" },
-  { id: "government", name: "City Hall",           x: 590,  y: 820,  w: 215, h: 165, color: 0x64748b, available: false, href: "/buildings/government", style: "standard" },
-  { id: "office",     name: "The Office Tower",    x: 900,  y: 820,  w: 215, h: 165, color: 0x06b6d4, available: false, href: "/buildings/office",     style: "standard" },
+  // ── Downtown Financial District ──
+  { id: "bank",       name: "First Realm Bank",   x: 900,  y: 1830, w: 200, h: 150, color: 0x10b981, available: true,  href: "/buildings/bank",       style: "bank",     neighborhood: "Downtown" },
+  { id: "government", name: "City Hall",           x: 760,  y: 1840, w: 160, h: 140, color: 0x64748b, available: false, href: "/buildings/government", style: "standard", neighborhood: "Downtown" },
+  { id: "office",     name: "Police Department",   x: 1060, y: 1840, w: 160, h: 130, color: 0x334155, available: false, href: "/buildings/office",     style: "standard", neighborhood: "Downtown" },
+  // ── Near Balboa Park ──
+  { id: "library",    name: "City Library",        x: 900,  y: 1420, w: 210, h: 160, color: 0x3b82f6, available: true,  href: "/buildings/library",    style: "library",  neighborhood: "Balboa Park" },
+  { id: "hospital",   name: "Realm Medical",       x: 720,  y: 1380, w: 175, h: 140, color: 0xef4444, available: false, href: "/buildings/hospital",   style: "standard", neighborhood: "Hillcrest" },
+  // ── La Jolla / UCSD area ──
+  { id: "university", name: "Realm University",    x: 565,  y: 490,  w: 210, h: 160, color: 0x8b5cf6, available: false, href: "/buildings/university", style: "standard", neighborhood: "La Jolla" },
+  { id: "mall",       name: "The Mall (UTC)",      x: 700,  y: 390,  w: 190, h: 150, color: 0xec4899, available: false, href: "/buildings/mall",       style: "standard", neighborhood: "UTC" },
+  // ── Pacific Beach ──
+  { id: "gym",        name: "Iron District Gym",   x: 395,  y: 800,  w: 180, h: 140, color: 0xf97316, available: false, href: "/buildings/gym",        style: "standard", neighborhood: "Pacific Beach" },
+  // ── North County ──
+  { id: "home",       name: "Your Home",           x: 920,  y: 290,  w: 180, h: 140, color: 0xf59e0b, available: false, href: "/buildings/home",       style: "standard", neighborhood: "Carmel Valley" },
 ]
 
 export class CityScene extends Phaser.Scene {
   private player!: Phaser.GameObjects.Container
   private playerBody!: Phaser.Physics.Arcade.Body
-  private playerGfx!: Phaser.GameObjects.Graphics
-  private leftLegGfx!: Phaser.GameObjects.Graphics
-  private rightLegGfx!: Phaser.GameObjects.Graphics
-  private leftArmGfx!: Phaser.GameObjects.Graphics
-  private rightArmGfx!: Phaser.GameObjects.Graphics
+  private legL!: Phaser.GameObjects.Graphics
+  private legR!: Phaser.GameObjects.Graphics
+  private body!: Phaser.GameObjects.Graphics
   private keys!: { up: Phaser.Input.Keyboard.Key; down: Phaser.Input.Keyboard.Key; left: Phaser.Input.Keyboard.Key; right: Phaser.Input.Keyboard.Key; w: Phaser.Input.Keyboard.Key; s: Phaser.Input.Keyboard.Key; a: Phaser.Input.Keyboard.Key; d: Phaser.Input.Keyboard.Key; e: Phaser.Input.Keyboard.Key }
   private nearBuilding: BuildingDef | null = null
   private promptText!: Phaser.GameObjects.Text
   private displayName = "You"
   private walkTick = 0
-  private isMoving = false
   private facingDir: "n" | "s" | "e" | "w" = "s"
 
-  constructor() {
-    super({ key: "CityScene" })
-  }
+  constructor() { super({ key: "CityScene" }) }
 
   init(data: { displayName?: string }) {
     this.displayName = data.displayName ?? "You"
   }
 
   create() {
-    this.drawWorld()
+    this.drawMap()
+    this.drawBuildings()
     this.createPlayer()
     this.setupCamera()
     this.setupKeys()
     this.createPrompt()
+
+    // Reposition prompt on window resize
+    this.scale.on("resize", () => {
+      this.promptText?.setPosition(this.cameras.main.width / 2, this.cameras.main.height - 50)
+    })
   }
 
-  // ── World drawing ───────────────────────────────────────────────────
+  // ═══════════════════════════════════════════════════════════════════════
+  // MAP LAYERS
+  // ═══════════════════════════════════════════════════════════════════════
 
-  private drawWorld() {
+  private drawMap() {
     this.drawOcean()
-    this.drawMountains()
     this.drawLand()
-    this.drawRoads()
-    this.drawBuildings()
-    this.drawTrees()
+    this.drawSanDiegoBay()
+    this.drawCoronado()
+    this.drawMissionBay()
+    this.drawParks()
+    this.drawMountains()
+    this.drawBeachEdge()
+    this.drawFreeways()
+    this.drawMajorRoads()
+    this.drawDowntownGrid()
+    this.drawResidentialRoads()
+    this.drawMarina()
+    this.drawCoronadoBridge()
+    this.drawNeighborhoodLabels()
+    this.drawBackgroundBuildings()
   }
 
   private drawOcean() {
     const g = this.add.graphics().setDepth(0)
-
-    // Deep ocean base
-    g.fillStyle(0x061420)
+    // Deep ocean fills entire world
+    g.fillStyle(0x05101e)
     g.fillRect(0, 0, WORLD_W, WORLD_H)
-
-    // Ocean shimmer stripes (west + south)
-    const shimmerAlphas = [0.04, 0.07, 0.04, 0.06, 0.03, 0.05]
-    // West ocean
-    for (let y = 0; y < WORLD_H; y += 18) {
-      g.fillStyle(0x1a6a9e, shimmerAlphas[Math.floor(y / 18) % shimmerAlphas.length])
-      g.fillRect(0, y, OCEAN_W - 10, 10)
+    // Subtle wave shimmer (horizontal bands)
+    for (let y = 0; y < WORLD_H; y += 24) {
+      g.fillStyle(0x0a1e32, (y % 48 === 0) ? 0.5 : 0.2)
+      g.fillRect(0, y, WORLD_W, 12)
     }
-    // South ocean
-    for (let x = 0; x < WORLD_W; x += 18) {
-      g.fillStyle(0x1a6a9e, shimmerAlphas[Math.floor(x / 18) % shimmerAlphas.length])
-      g.fillRect(x, WORLD_H - OCEAN_W + 10, 10, OCEAN_W - 10)
-    }
-
-    // Foam / shoreline glow
-    g.fillStyle(0x4aabdd, 0.12)
-    g.fillRect(OCEAN_W - 25, 0, 25, WORLD_H - OCEAN_W)       // west shore
-    g.fillRect(0, WORLD_H - OCEAN_W - 5, WORLD_W, 25)         // south shore
-
-    // Dock / pier sticking into west ocean
-    g.fillStyle(0x8a6a40, 0.7)
-    g.fillRect(OCEAN_W - 60, 520, 65, 14)
-    g.fillRect(OCEAN_W - 60, 534, 14, 80)
-    g.fillStyle(0x6a4a20, 0.5)
-    for (let py = 540; py < 610; py += 20) {
-      g.fillRect(OCEAN_W - 62, py, 3, 12)
-      g.fillRect(OCEAN_W - 48, py, 3, 12)
-    }
-
-    // Animate ocean shimmer via tweens on a separate overlay
-    const waveOverlay = this.add.graphics().setDepth(1).setAlpha(0)
-    g.fillStyle(0x60c8ee, 0.08)
-    for (let x = 20; x < OCEAN_W - 30; x += 28) {
-      for (let y = 40; y < WORLD_H - OCEAN_W; y += 45) {
-        waveOverlay.fillEllipse(x, y, 22, 5)
+    // Animated shimmer overlay
+    const shimmer = this.add.graphics().setDepth(1)
+    shimmer.fillStyle(0x1a5a9e, 0.05)
+    for (let x = 20; x < 450; x += 40) {
+      for (let y = 200; y < WORLD_H; y += 50) {
+        shimmer.fillEllipse(x, y, 28, 7)
       }
     }
-    this.tweens.add({
-      targets: waveOverlay,
-      alpha: { from: 0, to: 0.6 },
-      duration: 2000,
-      yoyo: true,
-      repeat: -1,
-      ease: "Sine.easeInOut",
-      delay: 500,
-    })
-  }
-
-  private drawMountains() {
-    const g = this.add.graphics().setDepth(0).setScrollFactor(0.25)
-
-    // Sky strip behind north mountains
-    g.fillStyle(0x0e1428)
-    g.fillRect(0, 0, WORLD_W, MOUNTAIN_H + 20)
-
-    // Far mountains (east horizon line)
-    const peaks = [
-      { x: 0,    h: 110, w: 280 },
-      { x: 220,  h: 155, w: 260 },
-      { x: 440,  h: 125, w: 300 },
-      { x: 700,  h: 170, w: 250 },
-      { x: 910,  h: 135, w: 280 },
-      { x: 1140, h: 160, w: 260 },
-      { x: 1360, h: 120, w: 280 },
-    ]
-    const BY = MOUNTAIN_H + 20
-
-    // Furthest range (lightest, most desaturated)
-    for (const p of peaks) {
-      g.fillStyle(0x1e2d4a, 0.5)
-      g.fillTriangle(p.x - 40, BY, p.x + p.w / 2, BY - p.h * 0.5, p.x + p.w + 40, BY)
-    }
-
-    // Mid range (darker blue-gray)
-    for (const p of peaks) {
-      g.fillStyle(0x253550, 0.85)
-      g.fillTriangle(p.x, BY, p.x + p.w / 2, BY - p.h, p.x + p.w, BY)
-      // Snow cap
-      g.fillStyle(0xccdaee, 0.5)
-      g.fillTriangle(
-        p.x + p.w * 0.28, BY - p.h * 0.72,
-        p.x + p.w / 2,    BY - p.h,
-        p.x + p.w * 0.72, BY - p.h * 0.72,
-      )
-    }
-
-    // Close ridge (darkest)
-    for (let rx = -60; rx < WORLD_W + 60; rx += 160) {
-      const rh = 55 + Math.sin(rx * 0.02) * 20
-      g.fillStyle(0x131c30, 0.9)
-      g.fillTriangle(rx, BY + 5, rx + 80, BY - rh, rx + 160, BY + 5)
-    }
-
-    // East mountains (visible when camera near east edge)
-    for (let i = 0; i < 5; i++) {
-      const mx = WORLD_W - OCEAN_W + 20
-      const mh = 80 + i * 30
-      g.fillStyle(0x1e2d4a, 0.6)
-      g.fillTriangle(mx - 40, 300 + i * 180, mx + 80, 300 + i * 180 - mh, mx + 160, 300 + i * 180)
-    }
+    this.tweens.add({ targets: shimmer, alpha: { from: 0.4, to: 1 }, duration: 2200, yoyo: true, repeat: -1 })
   }
 
   private drawLand() {
-    const g = this.add.graphics().setDepth(1)
-
-    // Main land mass (green-gray city ground)
-    g.fillStyle(0x0d1120)
-    g.fillRect(OCEAN_W, 0, WORLD_W - OCEAN_W, WORLD_H - OCEAN_W)
-
-    // Beach strip (west)
-    for (let y = 0; y < WORLD_H - OCEAN_W; y += 6) {
-      const shade = (y % 12 === 0) ? 0.18 : 0.12
-      g.fillStyle(0xd4a96a, shade)
-      g.fillRect(OCEAN_W - 2, y, 22, 5)
-    }
-    // Beach strip (south)
-    for (let x = OCEAN_W; x < WORLD_W; x += 6) {
-      const shade = (x % 12 === 0) ? 0.18 : 0.12
-      g.fillStyle(0xd4a96a, shade)
-      g.fillRect(x, WORLD_H - OCEAN_W - 2, 5, 22)
-    }
-
-    // City ground subtle texture
-    g.fillStyle(0xffffff, 0.012)
-    for (let x = OCEAN_W; x < WORLD_W; x += 40) {
-      for (let y = MOUNTAIN_H; y < WORLD_H - OCEAN_W; y += 40) {
-        g.fillRect(x, y, 38, 38)
-      }
-    }
-
-    // Parks / green spaces between building blocks
-    const parks = [
-      { x: 525, y: 270, w: 55,  h: 165 },   // between bank and library
-      { x: 820, y: 270, w: 70,  h: 165 },   // between lib and university
-      { x: 215, y: 450, w: 810, h: 85  },   // main east-west road
-      { x: 525, y: 545, w: 55,  h: 165 },
-      { x: 820, y: 545, w: 70,  h: 165 },
-      { x: 215, y: 725, w: 810, h: 85  },
-      { x: 525, y: 820, w: 55,  h: 165 },
-      { x: 820, y: 820, w: 70,  h: 165 },
-    ]
-    for (const p of parks) {
-      g.fillStyle(0x0e1f14, 0.7)
-      g.fillRect(p.x, p.y, p.w, p.h)
-    }
-  }
-
-  private drawRoads() {
     const g = this.add.graphics().setDepth(2)
 
-    // Main vertical avenues
-    const vRoads = [215, 520, 825, 1130]
-    for (const rx of vRoads) {
-      g.fillStyle(0x181824)
-      g.fillRect(rx, MOUNTAIN_H, 55, WORLD_H - MOUNTAIN_H - OCEAN_W)
-      // Lane dashes
-      g.lineStyle(1, 0xffffff, 0.04)
-      for (let y = MOUNTAIN_H + 20; y < WORLD_H - OCEAN_W; y += 36) {
-        g.lineBetween(rx + 27, y, rx + 27, y + 18)
-      }
+    // ── Main land polygon (San Diego coastal peninsula + inland) ──
+    // Coastal points going N→S along the west edge, then east, then back
+    const coastline = [
+      // Northern edge (Del Mar / Torrey Pines)
+      390, 200,
+      // Torrey Pines cliffs
+      340, 320,
+      // La Jolla Shores
+      295, 460,
+      // La Jolla Cove
+      278, 580,
+      // Bird Rock / PB
+      315, 700,
+      // Pacific Beach
+      370, 820,
+      // Mission Beach (narrows)
+      345, 940,
+      // Ocean Beach
+      330, 1050,
+      // Point Loma shoulder
+      295, 1180,
+      // Point Loma tip
+      255, 1360,
+      // Shelter Island / harbor entrance
+      360, 1560,
+      // Embarcadero starts
+      520, 1720,
+      // Seaport Village / Convention Ctr
+      680, 1810,
+      // SE downtown waterfront
+      820, 1900,
+      // Bay curves south — now bay takes over, land goes east
+      840, 2050,
+      880, 2200,
+      840, 2450,
+      790, 2650,
+      // Southeast (Chula Vista / border area)
+      760, 3000,
+      // Eastern border (mountains)
+      3600, 3000,
+      3600, 200,
+    ]
+
+    g.fillStyle(0x0e1918)
+    g.fillPoints(this.numArrayToVec2(coastline), true)
+
+    // Slight green tint for residential zones (north county)
+    g.fillStyle(0x0d1a12, 0.4)
+    g.fillRect(500, 200, 3000, 700)
+
+    // Downtown area slightly darker/urban
+    g.fillStyle(0x0a0f14, 0.5)
+    g.fillRect(680, 1750, 600, 350)
+  }
+
+  private drawSanDiegoBay() {
+    const g = this.add.graphics().setDepth(3)
+
+    // San Diego Bay — large enclosed bay east of Coronado, south of downtown
+    const bay = [
+      // Harbor entrance (north)
+      360, 1560,
+      500, 1640,
+      // Embarcadero (downtown waterfront)
+      540, 1720,
+      630, 1790,
+      730, 1850,
+      820, 1900,
+      840, 2050,
+      880, 2200,
+      840, 2450,
+      790, 2650,
+      // South bay
+      760, 2820,
+      680, 2900,
+      // Coronado / Sweetwater area
+      570, 2880,
+      490, 2800,
+      460, 2680,
+      // Coronado NAS back
+      420, 2500,
+      395, 2380,
+      380, 2200,
+      // North Island tip
+      370, 1980,
+      355, 1760,
+      // Back to harbor entrance
+      360, 1560,
+    ]
+
+    // Bay base
+    g.fillStyle(0x071828)
+    g.fillPoints(this.numArrayToVec2(bay), true)
+
+    // Bay shimmer
+    g.lineStyle(1, 0x1a4a7a, 0.2)
+    for (let y = 1600; y < 2900; y += 30) {
+      g.lineBetween(380, y, 820, y)
     }
 
-    // Main horizontal streets
-    const hRoads = [230, 450, 640, 730, 1000, 1000]
-    const hRoadsActual = [230, 450, 730, 1000]
-    for (const ry of hRoadsActual) {
-      g.fillStyle(0x181824)
-      g.fillRect(OCEAN_W, ry, WORLD_W - OCEAN_W, 50)
-      g.lineStyle(1, 0xffffff, 0.04)
-      for (let x = OCEAN_W + 20; x < WORLD_W; x += 36) {
-        g.lineBetween(x, ry + 25, x + 18, ry + 25)
-      }
+    // Bay border glow
+    g.lineStyle(2, 0x1a5a9e, 0.35)
+    g.strokePoints(this.numArrayToVec2(bay), true)
+  }
+
+  private drawCoronado() {
+    const g = this.add.graphics().setDepth(4)
+
+    // Coronado island + Silver Strand peninsula
+    const coronado = [
+      390, 2100,
+      460, 2040,
+      540, 2080,
+      580, 2180,
+      570, 2320,
+      540, 2460,
+      500, 2580,
+      460, 2650,
+      430, 2600,
+      400, 2480,
+      375, 2320,
+      370, 2180,
+    ]
+
+    g.fillStyle(0x101e18)
+    g.fillPoints(this.numArrayToVec2(coronado), true)
+
+    // Coronado streets (simple grid)
+    g.lineStyle(4, 0x171e22, 0.8)
+    for (let gy = 2080; gy < 2600; gy += 45) {
+      g.lineBetween(390, gy, 555, gy)
+    }
+    for (let gx = 400; gx < 560; gx += 50) {
+      g.lineBetween(gx, 2060, gx, 2620)
     }
 
-    // Sidewalks (lighter strips along road edges)
-    g.lineStyle(1, 0x2a2a40, 1)
-    for (const rx of vRoads) {
-      g.strokeRect(rx, MOUNTAIN_H, 55, WORLD_H - MOUNTAIN_H - OCEAN_W)
+    // "CORONADO" label
+    this.add.text(475, 2300, "CORONADO", {
+      fontSize: "11px", color: "#4a7a6a66", fontStyle: "bold", letterSpacing: 2,
+    }).setOrigin(0.5).setDepth(6).setAngle(-8)
+  }
+
+  private drawMissionBay() {
+    const g = this.add.graphics().setDepth(3)
+
+    // Mission Bay — oval-ish enclosed water body
+    const bay = [
+      355, 920,
+      410, 870,
+      490, 855,
+      570, 880,
+      620, 940,
+      640, 1040,
+      620, 1150,
+      560, 1230,
+      470, 1260,
+      390, 1230,
+      345, 1150,
+      330, 1050,
+      335, 970,
+    ]
+
+    g.fillStyle(0x071828)
+    g.fillPoints(this.numArrayToVec2(bay), true)
+
+    // Mission Bay shimmer
+    g.lineStyle(1, 0x1a4a7a, 0.18)
+    for (let y = 900; y < 1250; y += 25) {
+      g.lineBetween(345, y, 620, y)
+    }
+    g.lineStyle(1.5, 0x1a5a9e, 0.3)
+    g.strokePoints(this.numArrayToVec2(bay), true)
+
+    this.add.text(490, 1060, "MISSION\nBAY", {
+      fontSize: "9px", color: "#2a6a9e55", fontStyle: "bold", align: "center", letterSpacing: 1,
+    }).setOrigin(0.5).setDepth(6)
+  }
+
+  private drawParks() {
+    const g = this.add.graphics().setDepth(3)
+
+    // ── Balboa Park (large, distinctive) ──
+    g.fillStyle(0x0d2210, 0.9)
+    // Irregular park shape
+    const bpPoints = [
+      840, 1290,  1000, 1270,  1150, 1290,
+      1170, 1460, 1150, 1640,  1120, 1720,
+      980, 1740,  850, 1720,   830, 1620,
+      820, 1460,  830, 1360,
+    ]
+    g.fillPoints(this.numArrayToVec2(bpPoints), true)
+    // Park roads (2 main roads through park)
+    g.lineStyle(8, 0x0f1e14, 0.9)
+    g.lineBetween(995, 1270, 985, 1740)   // Park Blvd
+    g.lineBetween(840, 1510, 1150, 1490)  // El Prado
+    // Park texture dots (trees)
+    g.fillStyle(0x0a1e0d, 0.6)
+    const treePositions = [
+      870, 1340, 920, 1380, 970, 1320, 1040, 1360, 1100, 1310,
+      860, 1480, 1060, 1490, 1130, 1450, 880, 1580, 950, 1620,
+      1080, 1600, 880, 1680, 970, 1670, 1080, 1660,
+    ]
+    for (let i = 0; i < treePositions.length; i += 2) {
+      g.fillCircle(treePositions[i], treePositions[i + 1], 18)
+    }
+    this.add.text(990, 1510, "BALBOA\nPARK", {
+      fontSize: "13px", color: "#1a5a2a88", fontStyle: "bold", align: "center", letterSpacing: 2,
+    }).setOrigin(0.5).setDepth(6)
+
+    // ── Mission Bay Park (surrounding the bay) ──
+    g.fillStyle(0x0d2210, 0.5)
+    g.fillRect(350, 860, 290, 60)
+    g.fillRect(350, 1195, 280, 50)
+    g.fillRect(350, 920, 40, 280)
+    g.fillRect(600, 890, 50, 330)
+
+    // ── Presidio Park ──
+    g.fillStyle(0x0d2210, 0.7)
+    g.fillEllipse(660, 1180, 90, 70)
+
+    // ── Small neighborhood parks ──
+    for (const p of [
+      { x: 440, y: 730, w: 55, h: 45 },
+      { x: 830, y: 1090, w: 70, h: 55 },
+      { x: 1200, y: 540, w: 60, h: 50 },
+      { x: 950, y: 540, w: 65, h: 50 },
+      { x: 1300, y: 800, w: 80, h: 60 },
+    ]) {
+      g.fillStyle(0x0d2210, 0.65)
+      g.fillRoundedRect(p.x, p.y, p.w, p.h, 6)
+      g.lineStyle(1, 0x1a4a22, 0.3)
+      g.strokeRoundedRect(p.x, p.y, p.w, p.h, 6)
     }
   }
+
+  private drawMountains() {
+    const g = this.add.graphics().setDepth(2).setScrollFactor(0.2)
+
+    // East mountains (visible when camera scrolls east)
+    const peaks = [
+      { x: 1900, h: 160, w: 280 }, { x: 2150, h: 210, w: 320 }, { x: 2430, h: 180, w: 260 },
+      { x: 2660, h: 220, w: 300 }, { x: 2920, h: 190, w: 280 }, { x: 3180, h: 240, w: 320 },
+    ]
+    const BY = WORLD_H
+
+    // Far range
+    for (const p of peaks) {
+      g.fillStyle(0x1a2535, 0.6)
+      g.fillTriangle(p.x, BY, p.x + p.w / 2, BY - p.h * 1.3, p.x + p.w, BY)
+    }
+    // Near range
+    for (const p of peaks) {
+      g.fillStyle(0x1c2a3c, 0.85)
+      g.fillTriangle(p.x + 30, BY, p.x + p.w / 2, BY - p.h, p.x + p.w - 30, BY)
+      // Snow cap
+      g.fillStyle(0xc8d8e8, 0.35)
+      g.fillTriangle(p.x + p.w * 0.3, BY - p.h * 0.72, p.x + p.w / 2, BY - p.h, p.x + p.w * 0.7, BY - p.h * 0.72)
+    }
+  }
+
+  private drawBeachEdge() {
+    const g = this.add.graphics().setDepth(4)
+
+    // Sandy beach strip along the entire coastline
+    const beachPoints = [
+      390, 200, 345, 310, 300, 450, 283, 570, 318, 692, 375, 815,
+      350, 938, 335, 1045, 300, 1175, 260, 1355, 368, 1555,
+    ]
+    g.lineStyle(18, 0x9a8060, 0.22)
+    g.strokePoints(this.numArrayToVec2(beachPoints))
+
+    g.lineStyle(8, 0xc8a870, 0.15)
+    g.strokePoints(this.numArrayToVec2(beachPoints))
+
+    // Foam edge (white)
+    g.lineStyle(3, 0xffffff, 0.06)
+    g.strokePoints(this.numArrayToVec2(beachPoints))
+
+    // Beach trees (north coast)
+    const bTrees = this.add.graphics().setDepth(5)
+    for (const [bx, by] of [[420, 250], [410, 350], [400, 500], [380, 640], [420, 750], [400, 860]]) {
+      bTrees.lineStyle(2, 0x7a5a30, 0.7)
+      bTrees.lineBetween(bx, by + 14, bx - 3, by - 18)
+      bTrees.fillStyle(0x2d5e2d, 0.7)
+      for (const [fx, fy] of [[-18, -26], [-6, -34], [6, -32], [18, -26], [-6, -24], [12, -22]]) {
+        bTrees.lineBetween(bx - 3, by - 18, bx - 3 + fx, by - 18 + fy)
+      }
+    }
+  }
+
+  private drawFreeways() {
+    const g = this.add.graphics().setDepth(5)
+
+    // I-5 (north-south backbone)
+    // Runs parallel to coast, curves into downtown
+    const i5 = new Phaser.Curves.Spline([
+      845, 200,  848, 400,  851, 600,  855, 800,
+      860, 1000, 865, 1200, 868, 1380,
+      875, 1560, 870, 1700, 855, 1820,
+      845, 1870, 830, 1920,
+    ])
+    // Freeway shadow
+    g.lineStyle(26, 0x040810, 0.9)
+    i5.draw(g, 128)
+    // Main freeway lanes
+    g.lineStyle(20, 0x141420, 0.95)
+    i5.draw(g, 128)
+    // Center stripe
+    g.lineStyle(2, 0x2a2a38, 0.4)
+    i5.draw(g, 128)
+    // Freeway label
+    this.add.text(862, 1100, "I-5", { fontSize: "9px", color: "#4a4a6655", fontStyle: "bold" }).setOrigin(0.5).setDepth(6)
+
+    // I-8 (east-west through Mission Valley)
+    const i8 = new Phaser.Curves.Spline([
+      570, 1340,  700, 1330,  900, 1320,
+      1100, 1320, 1400, 1325, 1700, 1330,
+      2000, 1340, 2400, 1350,
+    ])
+    g.lineStyle(22, 0x040810, 0.9)
+    i8.draw(g, 128)
+    g.lineStyle(16, 0x141420, 0.95)
+    i8.draw(g, 128)
+    g.lineStyle(2, 0x2a2a38, 0.4)
+    i8.draw(g, 128)
+    this.add.text(1200, 1316, "I-8", { fontSize: "9px", color: "#4a4a6655", fontStyle: "bold" }).setOrigin(0.5).setDepth(6)
+
+    // I-15 (inland freeway)
+    const i15 = new Phaser.Curves.Spline([
+      1450, 200,  1448, 500,  1445, 800,
+      1445, 1100, 1445, 1400, 1450, 1700,
+      1440, 2000,
+    ])
+    g.lineStyle(18, 0x040810, 0.85)
+    i15.draw(g, 128)
+    g.lineStyle(13, 0x141420, 0.9)
+    i15.draw(g, 128)
+    this.add.text(1453, 900, "I-15", { fontSize: "8px", color: "#4a4a6644", fontStyle: "bold" }).setOrigin(0.5).setDepth(6)
+
+    // SR-163 (through Balboa Park — Cabrillo Freeway)
+    const sr163 = new Phaser.Curves.Spline([
+      960, 1060,  962, 1200,  964, 1350,
+      966, 1500,  966, 1650,  958, 1760,
+    ])
+    g.lineStyle(14, 0x040810, 0.8)
+    sr163.draw(g, 64)
+    g.lineStyle(10, 0x141420, 0.9)
+    sr163.draw(g, 64)
+
+    // SR-56 (east-west north county)
+    const sr56 = new Phaser.Curves.Spline([
+      890, 490,  1000, 485,  1200, 488,  1500, 492,  1800, 498,
+    ])
+    g.lineStyle(12, 0x040810, 0.75)
+    sr56.draw(g, 64)
+    g.lineStyle(8, 0x141420, 0.85)
+    sr56.draw(g, 64)
+  }
+
+  private drawMajorRoads() {
+    const g = this.add.graphics().setDepth(6)
+
+    // Pacific Coast Hwy (coastal road, curves with coastline)
+    const pch = new Phaser.Curves.Spline([
+      430, 200,  415, 340,  390, 480,  388, 620,
+      420, 760,  440, 900,  410, 1020, 390, 1160,
+    ])
+    g.lineStyle(12, 0x141826, 0.85)
+    pch.draw(g, 64)
+    g.lineStyle(1.5, 0x2a2a44, 0.3)
+    pch.draw(g, 64)
+
+    // Harbor Drive (waterfront road)
+    const harbor = new Phaser.Curves.Spline([
+      375, 1580,  440, 1640,  530, 1710,
+      640, 1770,  740, 1830,  800, 1880,
+    ])
+    g.lineStyle(14, 0x141826, 0.9)
+    harbor.draw(g, 64)
+
+    // Balboa Ave (east-west major)
+    const balboa = new Phaser.Curves.Spline([
+      390, 1040,  500, 1038,  640, 1045,
+      780, 1055,  950, 1060,  1200, 1065,
+      1500, 1070,
+    ])
+    g.lineStyle(10, 0x141826, 0.8)
+    balboa.draw(g, 64)
+
+    // Garnet Ave (Pacific Beach main street)
+    const garnet = new Phaser.Curves.Spline([
+      360, 820,  430, 818,  530, 822,  640, 820,  750, 820,
+    ])
+    g.lineStyle(9, 0x141826, 0.7)
+    garnet.draw(g, 64)
+
+    // Rosecrans St (Point Loma)
+    const rosecrans = new Phaser.Curves.Spline([
+      320, 1100,  380, 1140,  440, 1200,  500, 1280,  560, 1340,
+    ])
+    g.lineStyle(9, 0x141826, 0.7)
+    rosecrans.draw(g, 64)
+
+    // El Cajon Blvd (east from downtown)
+    g.lineStyle(8, 0x141826, 0.7)
+    g.lineBetween(900, 1760, 1600, 1760)
+
+    // Washington St / University Ave
+    const univAve = new Phaser.Curves.Spline([
+      720, 1380,  820, 1375,  960, 1370,
+      1100, 1370, 1300, 1375,
+    ])
+    g.lineStyle(8, 0x141826, 0.7)
+    univAve.draw(g, 64)
+
+    // Genesee Ave (UTC to La Jolla)
+    const genesee = new Phaser.Curves.Spline([
+      700, 380,  695, 480,  688, 580,
+      680, 700,  670, 840,  665, 960,
+      660, 1080, 660, 1200, 660, 1380,
+    ])
+    g.lineStyle(9, 0x141826, 0.75)
+    genesee.draw(g, 64)
+
+    // Miramar Rd
+    g.lineStyle(8, 0x141826, 0.65)
+    g.lineBetween(840, 680, 1600, 685)
+
+    // Torrey Pines Rd (La Jolla)
+    const tpRd = new Phaser.Curves.Spline([
+      380, 440,  420, 500,  490, 560,
+      560, 620,  620, 700,  640, 800,
+    ])
+    g.lineStyle(8, 0x141826, 0.65)
+    tpRd.draw(g, 64)
+  }
+
+  private drawDowntownGrid() {
+    const g = this.add.graphics().setDepth(7)
+
+    // Downtown San Diego has a slightly angled grid
+    // Runs roughly NW to SE
+    const dtOriginX = 720
+    const dtOriginY = 1760
+    const dtW = 480
+    const dtH = 320
+
+    // Main cross streets (horizontal, slightly diagonal)
+    const streets = ["A St", "B St", "C St", "Broadway", "E St", "F St", "Market"]
+    for (let i = 0; i < 7; i++) {
+      const y = dtOriginY + i * 44
+      const offset = i * 3 // slight diagonal
+      g.lineStyle(9, 0x131320, 0.9)
+      g.lineBetween(dtOriginX - offset, y, dtOriginX + dtW - offset, y)
+      g.lineStyle(1, 0x252535, 0.35)
+      g.lineBetween(dtOriginX - offset, y, dtOriginX + dtW - offset, y)
+    }
+
+    // Numbered/lettered avenues (vertical in downtown)
+    for (let i = 0; i < 8; i++) {
+      const x = dtOriginX + i * 58
+      g.lineStyle(9, 0x131320, 0.9)
+      g.lineBetween(x, dtOriginY - 20, x, dtOriginY + dtH + 20)
+      g.lineStyle(1, 0x252535, 0.3)
+      g.lineBetween(x, dtOriginY - 20, x, dtOriginY + dtH + 20)
+    }
+
+    // Sidewalk texture
+    g.lineStyle(1, 0x1e1e30, 0.2)
+    for (let i = 0; i < 7; i++) {
+      g.lineBetween(dtOriginX, dtOriginY + i * 44 + 5, dtOriginX + dtW, dtOriginY + i * 44 + 5)
+    }
+
+    // Gaslamp district (south downtown — slightly denser)
+    g.lineStyle(7, 0x131320, 0.9)
+    for (let i = 0; i < 4; i++) {
+      const y = dtOriginY + 180 + i * 32
+      g.lineBetween(dtOriginX + 60, y, dtOriginX + 340, y)
+    }
+
+    // Broadway label
+    this.add.text(910, 1880, "Broadway", { fontSize: "8px", color: "#3a3a5544", fontStyle: "italic" }).setOrigin(0.5).setDepth(8).setAngle(-1)
+  }
+
+  private drawResidentialRoads() {
+    const g = this.add.graphics().setDepth(5)
+
+    // ── North County subdivision roads (curving, organic) ──
+    const ncRoads = [
+      // Carmel Valley curves
+      [720, 280,  800, 295,  890, 290,  970, 285,  1060, 290,  1140, 302],
+      [720, 340,  810, 350,  920, 348,  1010, 342,  1100, 348,  1200, 355],
+      [720, 400,  820, 406,  930, 402,  1040, 398,  1150, 404,  1280, 415],
+      [730, 460,  840, 458,  960, 452,  1080, 455,  1200, 460,  1350, 470],
+      // Del Mar / Solana Beach
+      [360, 240,  420, 248,  490, 245,  550, 250],
+      [360, 290,  440, 295,  520, 290,  590, 298],
+      // La Jolla residential
+      [295, 520,  360, 528,  440, 535,  510, 528,  570, 540],
+      [295, 590,  370, 594,  450, 590,  530, 598,  600, 602],
+      [300, 650,  390, 655,  480, 651,  560, 660,  640, 668],
+      // Pacific Beach grid
+      [360, 710,  440, 712,  530, 714,  630, 712,  730, 710],
+      [360, 760,  440, 762,  530, 762,  640, 760],
+      [410, 710,  412, 760,  414, 820,  416, 880,  416, 950],
+      [470, 710,  472, 760,  474, 820,  476, 920],
+      [530, 714,  532, 762,  534, 820],
+      // Hillcrest / North Park
+      [730, 1140,  820, 1138,  910, 1136,  1010, 1138,  1100, 1140],
+      [730, 1190,  840, 1188,  940, 1186,  1040, 1190],
+      [730, 1240,  840, 1238,  940, 1238],
+      [740, 1140,  742, 1200,  744, 1250],
+      [800, 1140,  802, 1200,  802, 1250],
+      [870, 1140,  868, 1200,  868, 1250],
+      [940, 1140,  938, 1200,  938, 1250],
+    ]
+
+    g.lineStyle(6, 0x131826, 0.75)
+    for (const road of ncRoads) {
+      const spline = new Phaser.Curves.Spline(road)
+      spline.draw(g, 32)
+    }
+
+    // North County inland grid (less organic, larger blocks)
+    g.lineStyle(6, 0x131826, 0.6)
+    for (let rx = 1200; rx < 2400; rx += 120) {
+      g.lineBetween(rx, 200, rx, 780)
+    }
+    for (let ry = 250; ry < 780; ry += 90) {
+      g.lineBetween(1200, ry, 2400, ry)
+    }
+  }
+
+  private drawMarina() {
+    const g = this.add.graphics().setDepth(5)
+
+    // Embarcadero marina (downtown waterfront)
+    const mx = 590, my = 1740
+    g.fillStyle(0x071828, 0.8)
+    g.fillRect(mx, my, 180, 90)
+
+    // Boat slips
+    g.lineStyle(2, 0x2a5a8a, 0.5)
+    for (let i = 0; i < 8; i++) {
+      g.lineBetween(mx + 10 + i * 20, my, mx + 10 + i * 20, my + 80)
+    }
+    g.lineBetween(mx, my + 40, mx + 180, my + 40)
+
+    // Boats (small rectangles)
+    g.fillStyle(0xeee8d0, 0.5)
+    for (let i = 0; i < 7; i++) {
+      g.fillRect(mx + 13 + i * 20, my + 44, 8, 28)
+    }
+
+    this.add.text(mx + 90, my - 14, "EMBARCADERO", { fontSize: "8px", color: "#2a6a9e55", fontStyle: "bold", letterSpacing: 1 }).setOrigin(0.5).setDepth(7)
+  }
+
+  private drawCoronadoBridge() {
+    const g = this.add.graphics().setDepth(6)
+
+    // Coronado Bridge — iconic arch bridge
+    // Connects downtown (x≈780, y≈2050) to Coronado (x≈470, y≈2200)
+    const bridgePoints = [
+      { x: 790, y: 2060 }, { x: 750, y: 2080 }, { x: 700, y: 2110 },
+      { x: 650, y: 2140 }, { x: 600, y: 2160 }, { x: 550, y: 2175 },
+      { x: 500, y: 2185 }, { x: 470, y: 2200 },
+    ]
+
+    const bvec = bridgePoints.map((p) => new Phaser.Math.Vector2(p.x, p.y))
+    // Bridge shadow
+    g.lineStyle(14, 0x000000, 0.4)
+    g.strokePoints(bvec)
+    // Bridge deck
+    g.lineStyle(10, 0x2a2a4a, 0.9)
+    g.strokePoints(bvec)
+    // Bridge railing
+    g.lineStyle(2, 0x5a6aaa, 0.5)
+    g.strokePoints(bvec)
+    // Tower supports
+    for (const { x, y } of [{ x: 700, y: 2110 }, { x: 580, y: 2165 }]) {
+      g.lineStyle(3, 0x4a5a8a, 0.6)
+      g.lineBetween(x, y - 30, x, y + 30)
+      // Cables
+      for (let i = -5; i <= 5; i++) {
+        g.lineStyle(1, 0x4a5a8a, 0.25)
+        g.lineBetween(x, y - 28, x + i * 20, y + 12)
+      }
+    }
+
+    this.add.text(635, 2140, "Coronado Bridge", { fontSize: "8px", color: "#5a6aaa55", fontStyle: "italic" }).setOrigin(0.5).setDepth(7).setAngle(-14)
+  }
+
+  private drawNeighborhoodLabels() {
+    const labels = [
+      { text: "DOWNTOWN",       x: 910,  y: 1990, size: "14px", color: "#4a6a8a55", angle: 0 },
+      { text: "GASLAMP",        x: 880,  y: 2070, size: "9px",  color: "#4a6a8a44", angle: 0 },
+      { text: "HILLCREST",      x: 820,  y: 1280, size: "10px", color: "#3a5a3a55", angle: 0 },
+      { text: "NORTH PARK",     x: 1060, y: 1300, size: "9px",  color: "#3a5a3a44", angle: 0 },
+      { text: "MISSION VALLEY", x: 1100, y: 1340, size: "9px",  color: "#4a4a6a44", angle: 0 },
+      { text: "PACIFIC BEACH",  x: 450,  y: 750,  size: "10px", color: "#3a5a6a55", angle: 0 },
+      { text: "OCEAN BEACH",    x: 400,  y: 1050, size: "9px",  color: "#3a5a6a44", angle: 0 },
+      { text: "POINT LOMA",     x: 320,  y: 1260, size: "9px",  color: "#3a5a6a44", angle: -15 },
+      { text: "LA JOLLA",       x: 380,  y: 550,  size: "11px", color: "#4a6a5a55", angle: 0 },
+      { text: "UTC",            x: 750,  y: 350,  size: "9px",  color: "#4a4a6a44", angle: 0 },
+      { text: "CARMEL VALLEY",  x: 1000, y: 250,  size: "9px",  color: "#4a5a3a44", angle: 0 },
+      { text: "DEL MAR",        x: 430,  y: 280,  size: "9px",  color: "#3a5a4a44", angle: 0 },
+      { text: "MIRAMAR",        x: 1200, y: 660,  size: "9px",  color: "#4a4a4a44", angle: 0 },
+      { text: "NORTH COUNTY",   x: 1700, y: 420,  size: "12px", color: "#4a4a3a44", angle: 0 },
+      { text: "EAST COUNTY",    x: 2400, y: 1200, size: "12px", color: "#4a4a3a33", angle: 0 },
+      { text: "NATIONAL CITY",  x: 870,  y: 2500, size: "9px",  color: "#4a4a4a44", angle: 0 },
+    ]
+
+    for (const l of labels) {
+      this.add.text(l.x, l.y, l.text, {
+        fontSize: l.size, color: l.color, fontStyle: "bold", letterSpacing: 2,
+      }).setOrigin(0.5).setDepth(7).setAngle(l.angle)
+    }
+  }
+
+  private drawBackgroundBuildings() {
+    const g = this.add.graphics().setDepth(4)
+
+    // Downtown blocks (dense urban fabric)
+    const dtBlocks = [
+      [730, 1775, 50, 60], [790, 1775, 60, 60], [860, 1775, 50, 60],
+      [730, 1900, 55, 55], [840, 1930, 50, 45],
+      [1030, 1775, 60, 65], [1100, 1775, 55, 55], [1160, 1775, 50, 55],
+      [1030, 1870, 60, 50], [1100, 1870, 70, 50],
+      [730, 2000, 55, 50], [800, 2020, 50, 45], [1060, 2010, 60, 50],
+      [730, 2080, 55, 45], [1060, 2080, 60, 45],
+    ]
+    for (const [x, y, w, h] of dtBlocks) {
+      g.fillStyle(0x0e1520, 0.8)
+      g.fillRect(x, y, w, h)
+      g.lineStyle(0.5, 0x2a3a4a, 0.3)
+      g.strokeRect(x, y, w, h)
+    }
+
+    // Hillcrest / residential blocks
+    for (let bx = 740; bx < 1200; bx += 70) {
+      for (let by = 1130; by < 1400; by += 65) {
+        if (Math.random() > 0.35) {
+          const bw = 35 + Math.floor(Math.sin(bx * by) * 8 + 8)
+          const bh = 30 + Math.floor(Math.cos(bx + by) * 6 + 6)
+          g.fillStyle(0x0d1610, 0.6)
+          g.fillRect(bx, by, bw, bh)
+        }
+      }
+    }
+
+    // North County sparse residential (houses)
+    for (let bx = 750; bx < 1400; bx += 85) {
+      for (let by = 230; by < 550; by += 75) {
+        if (Math.random() > 0.4) {
+          g.fillStyle(0x0e1510, 0.5)
+          g.fillRect(bx, by, 28, 24)
+          // Roof peak hint
+          g.lineStyle(1, 0x1a2818, 0.4)
+          g.lineBetween(bx, by, bx + 14, by - 8)
+          g.lineBetween(bx + 14, by - 8, bx + 28, by)
+        }
+      }
+    }
+
+    // La Jolla / Pacific Beach medium density
+    for (let bx = 400; bx < 760; bx += 65) {
+      for (let by = 480; by < 950; by += 60) {
+        if (Math.random() > 0.45) {
+          g.fillStyle(0x0d1612, 0.55)
+          g.fillRect(bx, by, 30, 26)
+        }
+      }
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // LANDMARK BUILDINGS
+  // ═══════════════════════════════════════════════════════════════════════
 
   private drawBuildings() {
     for (const b of BUILDINGS) {
@@ -277,11 +810,11 @@ export class CityScene extends Phaser.Scene {
   }
 
   private drawAvailableBuilding(b: BuildingDef) {
-    const g = this.add.graphics().setDepth(4)
+    const g = this.add.graphics().setDepth(9)
     const { x, y, w, h, color } = b
 
-    // Drop shadow
-    g.fillStyle(0x000000, 0.5)
+    // Shadow
+    g.fillStyle(0x000000, 0.55)
     g.fillRect(x + 10, y + 10, w, h + FACADE)
 
     if (b.style === "library") {
@@ -292,280 +825,172 @@ export class CityScene extends Phaser.Scene {
       this.drawStandardExterior(g, x, y, w, h, color)
     }
 
-    // Glow outline
+    // Outer glow
     g.lineStyle(2, color, 0.5)
     g.strokeRect(x - 4, y - 4, w + 8, h + FACADE + 8)
 
-    // OPEN badge (as text object)
-    const badge = this.add.text(x + w / 2, y - 10, "● OPEN", {
-      fontSize: "8px",
-      color: `#${color.toString(16).padStart(6, "0")}`,
-      fontStyle: "bold",
-      backgroundColor: "#0d1120cc",
-      padding: { x: 6, y: 3 },
-    }).setOrigin(0.5, 1).setDepth(5)
+    // OPEN badge
+    const badge = this.add.text(x + w / 2, y - 12, "● OPEN", {
+      fontSize: "8px", color: `#${color.toString(16).padStart(6, "0")}`, fontStyle: "bold",
+      backgroundColor: "#0a0f14cc", padding: { x: 6, y: 3 },
+    }).setOrigin(0.5, 1).setDepth(10)
     this.tweens.add({ targets: badge, alpha: { from: 1, to: 0.3 }, duration: 1400, yoyo: true, repeat: -1 })
 
-    // Building name
     this.add.text(x + w / 2, y + h + FACADE + 6, b.name, {
-      fontSize: "10px",
-      color: "#ffffff88",
-      align: "center",
-      fontStyle: "bold",
-    }).setOrigin(0.5, 0).setDepth(5)
+      fontSize: "10px", color: "#ffffff88", align: "center", fontStyle: "bold",
+    }).setOrigin(0.5, 0).setDepth(10)
+
+    this.add.text(x + w / 2, y + h + FACADE + 18, b.neighborhood, {
+      fontSize: "8px", color: "#ffffff33", align: "center",
+    }).setOrigin(0.5, 0).setDepth(10)
   }
 
   private drawLibraryExterior(g: Phaser.GameObjects.Graphics, x: number, y: number, w: number, h: number, color: number) {
-    // Marble roof (classical library)
+    // Marble roof
     g.fillStyle(0x2a3560, 0.95)
     g.fillRect(x, y, w, h)
-
-    // Roof grid lines (marble texture hint)
-    g.lineStyle(1, 0x3a4870, 0.35)
+    g.lineStyle(1, 0x3a4870, 0.3)
     for (let lx = x + 20; lx < x + w; lx += 20) g.lineBetween(lx, y, lx, y + h)
     for (let ly = y + 20; ly < y + h; ly += 20) g.lineBetween(x, ly, x + w, ly)
-
-    // Pediment on roof (triangle shape visible from above)
+    // Pediment
     g.fillStyle(0x3a5090, 0.7)
     g.fillTriangle(x + w * 0.15, y, x + w / 2, y - 28, x + w * 0.85, y)
     g.lineStyle(2, color, 0.8)
     g.strokeTriangle(x + w * 0.15, y, x + w / 2, y - 28, x + w * 0.85, y)
-
-    // Columns row along south edge of roof
-    const numCols = 7
-    for (let i = 0; i <= numCols; i++) {
-      const cx = x + 15 + (i * (w - 30)) / numCols
-      g.fillStyle(0x8899cc, 0.85)
-      g.fillRect(cx - 4, y + h - 18, 8, 18)
+    // Columns on roof edge
+    for (let i = 0; i <= 7; i++) {
+      const cx = x + 12 + (i * (w - 24)) / 7
+      g.fillStyle(0x8899cc, 0.8)
+      g.fillRect(cx - 4, y + h - 16, 8, 16)
     }
-
-    // South facade (classical facade with columns)
+    // South facade
     g.fillStyle(0x1e2848, 1)
-    g.fillRect(x, y + h, w, FACADE + 10)
+    g.fillRect(x, y + h, w, FACADE + 12)
     g.lineStyle(2, color, 0.7)
-    g.strokeRect(x, y + h, w, FACADE + 10)
-
-    // Column lines on facade
-    for (let i = 0; i <= numCols; i++) {
-      const cx = x + 15 + (i * (w - 30)) / numCols
-      g.lineStyle(1.5, 0x8899cc, 0.7)
-      g.lineBetween(cx, y + h, cx, y + h + FACADE + 10)
+    g.strokeRect(x, y + h, w, FACADE + 12)
+    for (let i = 0; i <= 7; i++) {
+      const cx = x + 12 + (i * (w - 24)) / 7
+      g.lineStyle(1.5, 0x8899cc, 0.65)
+      g.lineBetween(cx, y + h, cx, y + h + FACADE + 12)
     }
-
     // Steps
     g.fillStyle(0x3a4870, 0.8)
-    g.fillRect(x + 10, y + h + FACADE + 10, w - 20, 7)
-    g.fillRect(x + 20, y + h + FACADE + 17, w - 40, 6)
-
-    // Entrance doors (double)
-    const dW = 28, dH = FACADE + 2
-    const dX = x + w / 2 - dW / 2
+    g.fillRect(x + 8, y + h + FACADE + 12, w - 16, 7)
+    // Doors
+    const dX = x + w / 2 - 13
     g.fillStyle(0x5577bb, 0.85)
-    g.fillRect(dX, y + h + 2, dW / 2 - 1, dH)
-    g.fillRect(dX + dW / 2 + 1, y + h + 2, dW / 2 - 1, dH)
+    g.fillRect(dX, y + h + 3, 12, FACADE + 4)
+    g.fillRect(dX + 14, y + h + 3, 12, FACADE + 4)
     g.lineStyle(1, color, 0.7)
-    g.strokeRect(dX, y + h + 2, dW, dH)
-    // Door arch
-    g.fillStyle(0x6688cc, 0.4)
-    g.fillEllipse(dX + dW / 2, y + h + 2, dW, 12)
-
-    // Arched windows on facade (flanking door)
-    for (const wOff of [-68, -40, 40, 68]) {
-      const winX = x + w / 2 + wOff - 10
-      const winY = y + h + 4
-      g.fillStyle(0x3355aa, 0.55)
-      g.fillRect(winX, winY, 18, 20)
-      g.lineStyle(1, color, 0.5)
-      g.strokeRect(winX, winY, 18, 20)
-    }
-
-    // Label "CITY LIBRARY" on roof
-    this.add.text(x + w / 2, y + h / 2 - 4, "CITY\nLIBRARY", {
-      fontSize: "10px",
-      color: "#8899cccc",
-      align: "center",
-      fontStyle: "bold",
-    }).setOrigin(0.5).setDepth(5)
+    g.strokeRect(dX, y + h + 3, 26, FACADE + 4)
+    this.add.text(x + w / 2, y + h / 2, "CITY\nLIBRARY", {
+      fontSize: "9px", color: "#8899ccbb", align: "center", fontStyle: "bold",
+    }).setOrigin(0.5).setDepth(10)
   }
 
   private drawBankExterior(g: Phaser.GameObjects.Graphics, x: number, y: number, w: number, h: number, color: number) {
-    // Art deco green marble roof
     g.fillStyle(0x0d2a20, 0.95)
     g.fillRect(x, y, w, h)
-
-    // Art deco grid
-    g.lineStyle(1, 0x1a4a30, 0.4)
+    g.lineStyle(1, 0x1a4a30, 0.35)
     for (let lx = x + 16; lx < x + w; lx += 16) g.lineBetween(lx, y, lx, y + h)
     for (let ly = y + 16; ly < y + h; ly += 16) g.lineBetween(x, ly, x + w, ly)
-
-    // Art deco stepped crown (rooftop detail)
+    // Art deco crown
     g.fillStyle(color, 0.2)
     g.fillRect(x + 20, y - 10, w - 40, 10)
-    g.fillRect(x + 40, y - 18, w - 80, 8)
-    g.fillRect(x + 60, y - 24, w - 120, 6)
-
-    // South facade
+    g.fillRect(x + 38, y - 18, w - 76, 8)
+    g.fillRect(x + 56, y - 24, w - 112, 6)
+    // Facade
     g.fillStyle(0x081a12, 0.95)
     g.fillRect(x, y + h, w, FACADE)
     g.lineStyle(2, color, 0.7)
     g.strokeRect(x, y + h, w, FACADE)
-
-    // Bank revolving door
-    const dCX = x + w / 2
+    // Revolving door
     g.fillStyle(0x66aa88, 0.3)
-    g.fillCircle(dCX, y + h + FACADE / 2 + 2, 14)
+    g.fillCircle(x + w / 2, y + h + FACADE / 2 + 2, 13)
     g.lineStyle(1, color, 0.5)
-    g.strokeCircle(dCX, y + h + FACADE / 2 + 2, 14)
+    g.strokeCircle(x + w / 2, y + h + FACADE / 2 + 2, 13)
     g.lineStyle(1, color, 0.4)
-    g.lineBetween(dCX - 14, y + h + FACADE / 2 + 2, dCX + 14, y + h + FACADE / 2 + 2)
-    g.lineBetween(dCX, y + h + 2, dCX, y + h + FACADE + 2)
-
-    // Windows on facade
-    for (const wx of [-55, -25, 25, 55]) {
+    g.lineBetween(x + w / 2 - 13, y + h + FACADE / 2 + 2, x + w / 2 + 13, y + h + FACADE / 2 + 2)
+    g.lineBetween(x + w / 2, y + h + 2, x + w / 2, y + h + FACADE + 2)
+    for (const wx of [-50, -22, 22, 50]) {
       g.fillStyle(color, 0.3)
-      g.fillRect(x + w / 2 + wx - 9, y + h + 4, 18, 20)
-      g.lineStyle(1, color, 0.6)
-      g.strokeRect(x + w / 2 + wx - 9, y + h + 4, 18, 20)
+      g.fillRect(x + w / 2 + wx - 9, y + h + 4, 18, 18)
+      g.lineStyle(1, color, 0.5)
+      g.strokeRect(x + w / 2 + wx - 9, y + h + 4, 18, 18)
     }
-
-    this.add.text(x + w / 2, y + h / 2 - 4, "FIRST REALM\nBANK", {
+    this.add.text(x + w / 2, y + h / 2, "FIRST REALM\nBANK", {
       fontSize: "9px", color: "#10b98199", align: "center", fontStyle: "bold",
-    }).setOrigin(0.5).setDepth(5)
+    }).setOrigin(0.5).setDepth(10)
   }
 
   private drawStandardExterior(g: Phaser.GameObjects.Graphics, x: number, y: number, w: number, h: number, color: number) {
-    g.fillStyle(color, 0.12)
+    g.fillStyle(color, 0.1)
     g.fillRect(x, y, w, h)
-    g.lineStyle(1.5, color, 0.4)
+    g.lineStyle(1.5, color, 0.35)
     g.strokeRect(x, y, w, h)
-
-    // Roof lines
-    g.lineStyle(1, color, 0.08)
-    for (let lx = x + 20; lx < x + w; lx += 20) g.lineBetween(lx, y, lx, y + h)
-    for (let ly = y + 20; ly < y + h; ly += 20) g.lineBetween(x, ly, x + w, ly)
-
-    // South facade
-    g.fillStyle(color, 0.08)
+    g.lineStyle(1, color, 0.06)
+    for (let lx = x + 18; lx < x + w; lx += 18) g.lineBetween(lx, y, lx, y + h)
+    g.fillStyle(color, 0.07)
     g.fillRect(x, y + h, w, FACADE)
     g.lineStyle(1, color, 0.3)
     g.strokeRect(x, y + h, w, FACADE)
-
-    // Windows
-    const numW = Math.floor(w / 52)
-    const gap = (w - numW * 18) / (numW + 1)
+    const numW = Math.floor(w / 50)
+    const gap = (w - numW * 16) / (numW + 1)
     for (let i = 0; i < numW; i++) {
-      const wx = x + gap + i * (18 + gap)
-      g.fillStyle(color, 0.25)
-      g.fillRect(wx, y + h + 5, 18, 18)
-      g.lineStyle(1, color, 0.5)
-      g.strokeRect(wx, y + h + 5, 18, 18)
+      const wx = x + gap + i * (16 + gap)
+      g.fillStyle(color, 0.22)
+      g.fillRect(wx, y + h + 5, 16, 16)
+      g.lineStyle(1, color, 0.45)
+      g.strokeRect(wx, y + h + 5, 16, 16)
     }
-
-    // Center door
-    g.fillStyle(color, 0.2)
-    g.fillRect(x + w / 2 - 10, y + h + 2, 20, FACADE - 2)
-    g.lineStyle(1, color, 0.4)
-    g.strokeRect(x + w / 2 - 10, y + h + 2, 20, FACADE - 2)
+    g.fillStyle(color, 0.18)
+    g.fillRect(x + w / 2 - 9, y + h + 3, 18, FACADE - 3)
+    g.lineStyle(1, color, 0.35)
+    g.strokeRect(x + w / 2 - 9, y + h + 3, 18, FACADE - 3)
   }
 
   private drawLockedBuilding(b: BuildingDef) {
-    const g = this.add.graphics().setDepth(4)
+    const g = this.add.graphics().setDepth(8)
     const { x, y, w, h, color } = b
-
-    g.fillStyle(color, 0.04)
+    g.fillStyle(color, 0.035)
     g.fillRect(x, y, w, h + FACADE)
     g.lineStyle(1, color, 0.1)
     g.strokeRect(x, y, w, h + FACADE)
-
-    // X-hatch (coming soon indicator)
     g.lineStyle(1, color, 0.04)
-    for (let d = -h; d < w; d += 28) {
-      g.lineBetween(x + Math.max(0, d), y, x + Math.min(w, d + h), y + Math.min(h, w - d))
+    for (let d = -(h + FACADE); d < w; d += 30) {
+      const sx = x + Math.max(0, d)
+      const sy = y + Math.max(0, -d)
+      const ex = x + Math.min(w, d + h + FACADE)
+      const ey = y + Math.max(0, -d) + (ex - sx)
+      g.lineBetween(sx, sy, ex, ey)
     }
-
-    this.add.text(x + w / 2, y + h / 2, "🔒", {
-      fontSize: "24px",
-    }).setOrigin(0.5).setDepth(5).setAlpha(0.2)
-
+    this.add.text(x + w / 2, y + h / 2 - 5, "🔒", { fontSize: "18px" }).setOrigin(0.5).setDepth(9).setAlpha(0.18)
     this.add.text(x + w / 2, y + h + FACADE + 6, b.name, {
-      fontSize: "10px", color: "#ffffff22", align: "center",
-    }).setOrigin(0.5, 0).setDepth(5)
-
-    this.add.text(x + w / 2, y + h / 2 + 20, "🔒", {
-      fontSize: "14px",
-    }).setOrigin(0.5).setDepth(5).setAlpha(0.2)
+      fontSize: "9px", color: "#ffffff22", align: "center",
+    }).setOrigin(0.5, 0).setDepth(9)
+    this.add.text(x + w / 2, y + h + FACADE + 17, b.neighborhood, {
+      fontSize: "8px", color: "#ffffff15", align: "center",
+    }).setOrigin(0.5, 0).setDepth(9)
   }
 
-  private drawTrees() {
-    const g = this.add.graphics().setDepth(3)
-
-    // Beach palm trees (west side)
-    const beachPalms = [160, 280, 400, 620, 780, 900, 1050]
-    for (const ty of beachPalms) {
-      this.drawPalmTree(g, OCEAN_W + 30, ty)
-    }
-
-    // Park trees between building rows
-    const parkTrees = [
-      { x: 215, y: 490 }, { x: 240, y: 560 }, { x: 230, y: 640 },
-      { x: 215, y: 760 }, { x: 240, y: 830 }, { x: 1140, y: 490 },
-      { x: 1160, y: 580 }, { x: 1145, y: 760 }, { x: 1165, y: 840 },
-      { x: 450, y: 480 }, { x: 700, y: 480 }, { x: 960, y: 480 },
-      { x: 450, y: 760 }, { x: 700, y: 760 }, { x: 960, y: 760 },
-    ]
-    for (const t of parkTrees) {
-      this.drawTree(g, t.x, t.y)
-    }
-  }
-
-  private drawPalmTree(g: Phaser.GameObjects.Graphics, x: number, y: number) {
-    // Trunk (slightly tilted)
-    g.lineStyle(3, 0x7a5a30, 0.8)
-    g.lineBetween(x, y + 20, x - 4, y - 22)
-    // Fronds
-    g.lineStyle(2, 0x2d5e2d, 0.7)
-    const fronds = [[-20, -30], [-10, -36], [2, -38], [14, -34], [20, -28], [-8, -28], [10, -26]]
-    for (const [fx, fy] of fronds) {
-      g.lineBetween(x - 4, y - 22, x - 4 + fx, y - 22 + fy)
-    }
-    g.fillStyle(0x5a3a10, 0.6)
-    g.fillCircle(x - 4, y - 22, 4)
-  }
-
-  private drawTree(g: Phaser.GameObjects.Graphics, x: number, y: number) {
-    g.lineStyle(2, 0x5a3a20, 0.7)
-    g.lineBetween(x, y + 14, x, y - 10)
-    g.fillStyle(0x1a4a1a, 0.75)
-    g.fillCircle(x, y - 14, 14)
-    g.fillStyle(0x1e5a1e, 0.4)
-    g.fillCircle(x - 6, y - 18, 9)
-    g.fillCircle(x + 6, y - 18, 9)
-  }
-
-  // ── Player ───────────────────────────────────────────────────────────
+  // ═══════════════════════════════════════════════════════════════════════
+  // PLAYER
+  // ═══════════════════════════════════════════════════════════════════════
 
   private createPlayer() {
-    // Separate graphics for animated body parts
-    this.leftLegGfx  = this.add.graphics()
-    this.rightLegGfx = this.add.graphics()
-    this.leftArmGfx  = this.add.graphics()
-    this.rightArmGfx = this.add.graphics()
-    const bodyGfx    = this.add.graphics()
-    const nameLabel  = this.add.text(0, -34, this.displayName, {
-      fontSize: "10px",
-      color: "#ffffffcc",
-      fontStyle: "bold",
-      backgroundColor: "#00000077",
-      padding: { x: 5, y: 2 },
+    this.legL  = this.add.graphics()
+    this.legR  = this.add.graphics()
+    this.body  = this.add.graphics()
+
+    this.drawPlayerSprite("s")
+
+    const nameLabel = this.add.text(0, -36, this.displayName, {
+      fontSize: "10px", color: "#ffffffcc", fontStyle: "bold",
+      backgroundColor: "#00000077", padding: { x: 5, y: 2 },
     }).setOrigin(0.5, 1)
 
-    this.redrawPlayer("s")
-
-    this.player = this.add.container(800, 650, [
-      this.leftLegGfx, this.rightLegGfx, this.leftArmGfx, this.rightArmGfx, bodyGfx, nameLabel,
-    ])
-    bodyGfx.setDepth(8)
-    this.player.setDepth(10)
+    this.player = this.add.container(920, 1870, [this.legL, this.legR, this.body, nameLabel])
+    this.player.setDepth(20)
 
     this.physics.world.enable(this.player)
     this.playerBody = this.player.body as Phaser.Physics.Arcade.Body
@@ -573,57 +998,47 @@ export class CityScene extends Phaser.Scene {
     this.playerBody.setCircle(12, -12, -12)
   }
 
-  private redrawPlayer(dir: "n" | "s" | "e" | "w") {
-    const lg = this.leftLegGfx
-    const rg = this.rightLegGfx
-    const la = this.leftArmGfx
-    const ra = this.rightArmGfx
-
-    lg.clear(); rg.clear(); la.clear(); ra.clear()
+  private drawPlayerSprite(dir: "n" | "s" | "e" | "w") {
+    this.legL.clear()
+    this.legR.clear()
+    this.body.clear()
 
     // Shadow
-    lg.fillStyle(0x000000, 0.3)
-    lg.fillEllipse(0, 18, 28, 9)
+    this.legL.fillStyle(0x000000, 0.3)
+    this.legL.fillEllipse(0, 20, 28, 10)
 
     // Legs
-    lg.fillStyle(0x1a2460)
-    lg.fillRoundedRect(-8, 4, 7, 14, 3)   // left leg
-    rg.fillStyle(0x1a2460)
-    rg.fillRoundedRect(1, 4, 7, 14, 3)    // right leg
-
-    // Arms
-    la.fillStyle(0x4f46e5, 0.9)
-    la.fillRoundedRect(-14, -8, 5, 12, 2)  // left arm
-    ra.fillStyle(0x4f46e5, 0.9)
-    ra.fillRoundedRect(9, -8, 5, 12, 2)   // right arm
+    this.legL.fillStyle(0x1a2460)
+    this.legL.fillRoundedRect(-8, 4, 7, 14, 3)
+    this.legR.fillStyle(0x1a2460)
+    this.legR.fillRoundedRect(1, 4, 7, 14, 3)
 
     // Body
-    la.fillStyle(0x4f46e5)
-    la.fillRoundedRect(-9, -10, 18, 16, 4)
+    this.body.fillStyle(0x4f46e5)
+    this.body.fillRoundedRect(-9, -10, 18, 16, 4)
+    // Arms
+    this.body.fillStyle(0x4f46e5, 0.9)
+    this.body.fillRoundedRect(-14, -8, 5, 12, 2)
+    this.body.fillRoundedRect(9, -8, 5, 12, 2)
 
     // Head
-    la.fillStyle(0xfbbf24)
-    la.fillCircle(0, -20, 10)
-
-    // Eyes based on direction
-    la.fillStyle(0x1f2937)
-    if (dir === "s") {
-      la.fillCircle(-3, -20, 2)
-      la.fillCircle(3, -20, 2)
-    } else if (dir === "n") {
-      // No eyes (facing away)
-    } else if (dir === "e") {
-      la.fillCircle(3, -21, 2)
-    } else {
-      la.fillCircle(-3, -21, 2)
-    }
-
+    this.body.fillStyle(0xfbbf24)
+    this.body.fillCircle(0, -22, 10)
     // Hair
-    la.fillStyle(0x92400e)
-    la.fillEllipse(0, -28, 16, 8)
+    this.body.fillStyle(0x92400e)
+    this.body.fillEllipse(0, -30, 16, 8)
+
+    // Eyes (direction-aware)
+    this.body.fillStyle(0x1f2937)
+    if (dir === "s") { this.body.fillCircle(-3, -22, 2); this.body.fillCircle(3, -22, 2) }
+    else if (dir === "n") { /* facing away */ }
+    else if (dir === "e") { this.body.fillCircle(4, -23, 2) }
+    else                  { this.body.fillCircle(-4, -23, 2) }
   }
 
-  // ── Camera / Keys ────────────────────────────────────────────────────
+  // ═══════════════════════════════════════════════════════════════════════
+  // SETUP
+  // ═══════════════════════════════════════════════════════════════════════
 
   private setupCamera() {
     this.cameras.main.setBounds(0, 0, WORLD_W, WORLD_H)
@@ -654,8 +1069,8 @@ export class CityScene extends Phaser.Scene {
       this.cameras.main.width / 2,
       this.cameras.main.height - 50,
       "",
-      { fontSize: "13px", color: "#ffffff", backgroundColor: "#1a1a2ecc", padding: { x: 14, y: 8 } }
-    ).setOrigin(0.5, 1).setScrollFactor(0).setDepth(20).setAlpha(0)
+      { fontSize: "13px", color: "#ffffff", backgroundColor: "#1a1a2eee", padding: { x: 14, y: 8 } }
+    ).setOrigin(0.5, 1).setScrollFactor(0).setDepth(30).setAlpha(0)
   }
 
   private enterBuilding(b: BuildingDef) {
@@ -665,50 +1080,57 @@ export class CityScene extends Phaser.Scene {
     })
   }
 
-  // ── Update loop ──────────────────────────────────────────────────────
+  // ═══════════════════════════════════════════════════════════════════════
+  // UTILS
+  // ═══════════════════════════════════════════════════════════════════════
+
+  private numArrayToVec2(arr: number[]): Phaser.Math.Vector2[] {
+    const out: Phaser.Math.Vector2[] = []
+    for (let i = 0; i < arr.length; i += 2) {
+      out.push(new Phaser.Math.Vector2(arr[i], arr[i + 1]))
+    }
+    return out
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // UPDATE LOOP
+  // ═══════════════════════════════════════════════════════════════════════
 
   update() {
     if (!this.playerBody) return
 
     const { up, down, left, right, w, s, a, d } = this.keys
-    let vx = 0
-    let vy = 0
+    let vx = 0, vy = 0
+    let newDir = this.facingDir
 
-    if (left.isDown || a.isDown)  { vx = -PLAYER_SPEED; this.facingDir = "w" }
-    if (right.isDown || d.isDown) { vx =  PLAYER_SPEED; this.facingDir = "e" }
-    if (up.isDown || w.isDown)    { vy = -PLAYER_SPEED; if (vx === 0) this.facingDir = "n" }
-    if (down.isDown || s.isDown)  { vy =  PLAYER_SPEED; if (vx === 0) this.facingDir = "s" }
-
+    if (left.isDown || a.isDown)  { vx = -PLAYER_SPEED; newDir = "w" }
+    if (right.isDown || d.isDown) { vx =  PLAYER_SPEED; newDir = "e" }
+    if (up.isDown || w.isDown)    { vy = -PLAYER_SPEED; if (vx === 0) newDir = "n" }
+    if (down.isDown || s.isDown)  { vy =  PLAYER_SPEED; if (vx === 0) newDir = "s" }
     if (vx !== 0 && vy !== 0) { vx *= 0.707; vy *= 0.707 }
-
-    const wasMoving = this.isMoving
-    this.isMoving = vx !== 0 || vy !== 0
 
     this.playerBody.setVelocity(vx, vy)
 
-    if (this.isMoving) {
-      this.walkTick++
-      const swing = Math.sin(this.walkTick * 0.25) * 10
-
-      this.leftLegGfx.rotation  = swing * 0.06
-      this.rightLegGfx.rotation = -swing * 0.06
-      this.leftArmGfx.rotation  = -swing * 0.05
-      this.rightArmGfx.rotation = swing * 0.05
-
-      // Vertical bob
-      const bob = Math.abs(Math.sin(this.walkTick * 0.25)) * 1.5
-      this.player.y -= bob * 0.1
-
-      if (!wasMoving) this.redrawPlayer(this.facingDir)
-    } else {
-      this.walkTick = 0
-      this.leftLegGfx.rotation  = 0
-      this.rightLegGfx.rotation = 0
-      this.leftArmGfx.rotation  = 0
-      this.rightArmGfx.rotation = 0
+    if (newDir !== this.facingDir) {
+      this.facingDir = newDir
+      this.drawPlayerSprite(newDir)
     }
 
-    // Proximity check
+    const isMoving = vx !== 0 || vy !== 0
+    if (isMoving) {
+      this.walkTick++
+      const swing = Math.sin(this.walkTick * 0.22) * 10
+      this.legL.rotation =  swing * 0.06
+      this.legR.rotation = -swing * 0.06
+      this.body.rotation =  swing * 0.01
+    } else {
+      this.walkTick = 0
+      this.legL.rotation = 0
+      this.legR.rotation = 0
+      this.body.rotation = 0
+    }
+
+    // Proximity check — detect closest building door
     const px = this.player.x
     const py = this.player.y
     let closest: BuildingDef | null = null
@@ -716,12 +1138,9 @@ export class CityScene extends Phaser.Scene {
 
     for (const b of BUILDINGS) {
       const cx = b.x + b.w / 2
-      const cy = b.y + b.h + FACADE   // proximity to door
+      const cy = b.y + b.h + FACADE
       const dist = Phaser.Math.Distance.Between(px, py, cx, cy)
-      if (dist < ENTER_RADIUS && dist < closestDist) {
-        closestDist = dist
-        closest = b
-      }
+      if (dist < ENTER_RADIUS && dist < closestDist) { closestDist = dist; closest = b }
     }
 
     if (closest !== this.nearBuilding) {

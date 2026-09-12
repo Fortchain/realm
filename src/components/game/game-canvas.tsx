@@ -23,9 +23,7 @@ export default function GameCanvas({ displayName }: GameCanvasProps) {
 
       const config: Phaser.Types.Core.GameConfig = {
         type: Phaser.AUTO,
-        width: 900,
-        height: 840,
-        backgroundColor: "#080810",
+        backgroundColor: "#08080f",
         parent: containerRef.current!,
         physics: {
           default: "arcade",
@@ -33,13 +31,10 @@ export default function GameCanvas({ displayName }: GameCanvasProps) {
         },
         scene: CityScene,
         scale: {
-          mode: Phaser.Scale.FIT,
+          mode: Phaser.Scale.RESIZE,
           autoCenter: Phaser.Scale.CENTER_BOTH,
         },
-        render: {
-          antialias: true,
-          pixelArt: false,
-        },
+        render: { antialias: true, pixelArt: false },
       }
 
       game = new Phaser.Game(config)
@@ -53,7 +48,7 @@ export default function GameCanvas({ displayName }: GameCanvasProps) {
     boot()
 
     const handleEnter = (e: Event) => {
-      const { href } = (e as CustomEvent<{ href: string }>).detail
+      const { href } = (e as CustomEvent<{ href: string; id: string }>).detail
       router.push(href)
     }
     window.addEventListener("realm:enter-building", handleEnter)
@@ -68,13 +63,8 @@ export default function GameCanvas({ displayName }: GameCanvasProps) {
   return (
     <div
       ref={containerRef}
-      className="w-full rounded-2xl overflow-hidden border border-white/8"
-      style={{
-        background: "#080810",
-        aspectRatio: "900 / 840",
-        maxWidth: "900px",
-        margin: "0 auto",
-      }}
+      className="absolute inset-0 w-full h-full"
+      style={{ background: "#08080f" }}
     />
   )
 }
