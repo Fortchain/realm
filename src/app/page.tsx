@@ -1,7 +1,11 @@
 import Link from "next/link"
+import { auth } from "@clerk/nextjs/server"
+import { redirect } from "next/navigation"
 import { Sparkles, Building2, Smartphone, Brain, ArrowRight } from "lucide-react"
 
-export default function Home() {
+export default async function Home() {
+  const { userId } = await auth()
+  if (userId) redirect("/city")
   return (
     <div className="min-h-screen bg-[#080810] text-white overflow-hidden">
       {/* Nav */}
