@@ -59,7 +59,8 @@
 ## Deployment Log
 | Date | Commit | What Shipped |
 |---|---|---|
-| 2026-09-12 | (pending) | Full city map revamp: 4800×4800 square sandbox, 12×12 grid, physics collision (player walks streets/parks/beach only), 0.65 zoom (100-story view), crosswalks, lane markings, beach waves, tree canopies, fountain plazas, updated MapHUD to match new world |
+| 2026-09-12 | 56c30cc | Full city map revamp: 4800×4800 square sandbox, 12×12 grid, physics collision (player walks streets/parks/beach only), 0.65 zoom (100-story view), crosswalks, lane markings, beach waves, tree canopies, fountain plazas, updated MapHUD to match new world |
+| 2026-09-12 | (pending) | GTA-style city revamp: block subdivision (2-6 varied buildings per block), 3D depth illusion (south/east walls + drop shadows), street trees along every sidewalk, in-block vegetation, library gets detailed skylight grid + columns + pediment + hedgerow |
 | 2026-09-12 | 7d14592 | GTA-style map HUD with minimap, full map overlay, teleport |
 | 2026-09-12 | f630a3f | San Diego city map, fullscreen canvas, corner phone widget |
 | 2026-09-12 | 76d0100 | Library interior with Phaser zones |
