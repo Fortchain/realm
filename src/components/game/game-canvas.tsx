@@ -23,12 +23,8 @@ export default function GameCanvas({ displayName }: GameCanvasProps) {
 
       const config: Phaser.Types.Core.GameConfig = {
         type: Phaser.AUTO,
-        backgroundColor: "#87ceeb",
+        backgroundColor: "#1a2438",
         parent: containerRef.current!,
-        physics: {
-          default: "arcade",
-          arcade: { gravity: { x: 0, y: 0 }, debug: false },
-        },
         scene: CityScene,
         scale: {
           mode: Phaser.Scale.RESIZE,
@@ -64,7 +60,7 @@ export default function GameCanvas({ displayName }: GameCanvasProps) {
     <div
       ref={containerRef}
       className="absolute inset-0 w-full h-full"
-      style={{ background: "#87ceeb" }}
+      style={{ background: "#1a2438" }}
     />
   )
 }
