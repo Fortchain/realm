@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
-import { Sparkles, LogOut, Zap, Users, Building2 } from "lucide-react"
+import { Sparkles, LogOut, Zap, Users, Building2, Hammer } from "lucide-react"
 import { useClerk } from "@clerk/nextjs"
 import { motion, AnimatePresence } from "framer-motion"
 import dynamic from "next/dynamic"
@@ -110,8 +110,16 @@ export default function CityPage() {
             </div>
           </div>
 
-          {/* Right: user avatar */}
+          {/* Right: builder link + user avatar */}
           <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={() => router.push("/builder")}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 transition-all"
+            >
+              <Hammer className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Build City</span>
+            </button>
+            <div className="w-px h-5 bg-black/10 hidden sm:block" />
             <div className="relative">
               <button
                 onClick={() => setShowUserMenu((v) => !v)}

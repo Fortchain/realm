@@ -24,6 +24,7 @@ model User {
   bankConnections BankConnection[]
   aiConversations AiConversation[]
   presences      BuildingPresence[]
+  cityMap        CityMap?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -98,4 +99,13 @@ model AiConversation {
   createdAt   DateTime @default(now())
 
   @@unique([userId, location])
+}
+
+model CityMap {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  objects   Json     @default("[]")
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
 }

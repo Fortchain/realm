@@ -6,7 +6,7 @@
 ---
 
 ## Live Features
-- [x] Phaser 2D San Diego city (3600×3000, WASD movement, E to enter)
+- [x] Phaser 2D San Diego city (4800×4800, WASD movement, E to enter)
 - [x] Daytime visual theme (ocean, beach, parks, white buildings)
 - [x] Map HUD — minimap bottom-left + full-map overlay with teleport
 - [x] GTA-style phone widget (FAB → 340×580 panel)
@@ -53,14 +53,18 @@
 - [ ] Gym: log workouts, track streaks, AI generates weekly plan
 - [ ] Home: ARIA connects to Google Calendar / reminders
 - [ ] Monetization: Realm Premium (unlimited AI messages, more buildings)
+- [ ] Builder: use your custom map as the playable /city world
+- [ ] Builder: undo/redo stack
+- [ ] Builder: copy/paste selected objects
 
 ---
 
 ## Deployment Log
 | Date | Commit | What Shipped |
 |---|---|---|
+| 2026-09-12 | TBD | City Builder at /builder: blank 6000×6000 Phaser canvas, 20-type object palette (terrain/roads/buildings/nature/props), select/place/erase tools, drag-to-move, 8-handle resize, right-click pan, scroll zoom, WASD pan, grid snap (G toggle), color picker, object labels, save/load per user via Postgres CityMap model |
 | 2026-09-12 | 56c30cc | Full city map revamp: 4800×4800 square sandbox, 12×12 grid, physics collision (player walks streets/parks/beach only), 0.65 zoom (100-story view), crosswalks, lane markings, beach waves, tree canopies, fountain plazas, updated MapHUD to match new world |
-| 2026-09-12 | (pending) | GTA-style city revamp: block subdivision (2-6 varied buildings per block), 3D depth illusion (south/east walls + drop shadows), street trees along every sidewalk, in-block vegetation, library gets detailed skylight grid + columns + pediment + hedgerow |
+| 2026-09-12 | f6580d1 | GTA-style city revamp: block subdivision (2-6 varied buildings per block), 3D depth illusion (south/east walls + drop shadows), street trees along every sidewalk, in-block vegetation, library gets detailed skylight grid + columns + pediment + hedgerow |
 | 2026-09-12 | 7d14592 | GTA-style map HUD with minimap, full map overlay, teleport |
 | 2026-09-12 | f630a3f | San Diego city map, fullscreen canvas, corner phone widget |
 | 2026-09-12 | 76d0100 | Library interior with Phaser zones |
