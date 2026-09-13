@@ -7,8 +7,8 @@ import { X, Plus, Minus, Locate, MapPin } from "lucide-react"
 // ── Iso grid constants (mirrors city-scene.ts) ────────────────────────────────
 const GC   = 24
 const GR   = 24
-const HW   = 48
-const HH   = 24
+const HW   = 50
+const HH   = 25
 const OX   = 1250
 const OY   = 160
 

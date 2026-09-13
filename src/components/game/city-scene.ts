@@ -3,8 +3,8 @@ import Phaser from "phaser"
 // ── Constants ─────────────────────────────────────────────────────────────────
 const GC      = 24          // grid cols
 const GR      = 24          // grid rows
-const HW      = 48          // half tile width  (tile = 96 wide)
-const HH      = 24          // half tile height (tile = 48 tall, 2:1 ratio)
+const HW      = 50          // half tile width  (tile = 100 wide — matches Kenney sprites)
+const HH      = 25          // half tile height (tile = 50 tall, 2:1 ratio)
 const FH      = 18          // pixels per building floor
 const OX      = 1250        // world-space origin x for tile (0,0)
 const OY      = 160         // world-space origin y
@@ -160,19 +160,6 @@ function winSW(g: Phaser.GameObjects.Graphics, sx: number, sy: number, H: number
   }
 }
 
-// ── Draw: iso tree ─────────────────────────────────────────────────────────────
-function isoTree(g: Phaser.GameObjects.Graphics, sx: number, sy: number, scale = 1) {
-  g.fillStyle(0x000000, 0.15)
-  g.fillEllipse(sx + 3, sy + 5, 14 * scale, 6 * scale)
-  g.fillStyle(0x3c2010)
-  g.fillRect(sx - 1.5, sy - 1, 3, 9 * scale)
-  g.fillStyle(0x1a4c1a)
-  g.fillCircle(sx - 1, sy - 8 * scale, 9 * scale)
-  g.fillStyle(0x256a25)
-  g.fillCircle(sx - 2, sy - 13 * scale, 6 * scale)
-  g.fillStyle(0x38a038, 0.6)
-  g.fillCircle(sx - 3, sy - 16 * scale, 4 * scale)
-}
 
 // ── Draw: street lamp ─────────────────────────────────────────────────────────
 function streetLamp(g: Phaser.GameObjects.Graphics, sx: number, sy: number) {
@@ -221,6 +208,24 @@ export class CityScene extends Phaser.Scene {
   constructor() { super({ key: 'CityScene' }) }
   init(data: { displayName?: string }) { this.displayName = data.displayName ?? 'You' }
 
+  // ── Preload ───────────────────────────────────────────────────────────────
+  preload() {
+    const p = '/sprites/city/'
+    this.load.image('tile-grass',          p + 'grass.png')
+    this.load.image('tile-water',          p + 'water.png')
+    this.load.image('tile-beach',          p + 'beach.png')
+    this.load.image('tile-road',           p + 'road.png')
+    this.load.image('tile-road-ns',        p + 'road-ns.png')
+    this.load.image('tile-road-ew',        p + 'road-ew.png')
+    this.load.image('tile-inter',          p + 'crossroad.png')
+    this.load.image('tile-dirt',           p + 'dirt.png')
+    this.load.image('tile-lot',            p + 'lot.png')
+    this.load.image('tree-tall',           p + 'tree-tall.png')
+    this.load.image('tree-short',          p + 'tree-short.png')
+    this.load.image('tree-conifer',        p + 'tree-conifer.png')
+    this.load.image('tree-conifer-short',  p + 'tree-conifer-short.png')
+  }
+
   // ── Create ────────────────────────────────────────────────────────────────
   create() {
     this.cameras.main.setBackgroundColor(0x0d1520)
@@ -242,95 +247,46 @@ export class CityScene extends Phaser.Scene {
   // ── Draw city (painter's algo) ─────────────────────────────────────────────
   private drawCity() {
     for (let d = 0; d <= GC + GR - 2; d++) {
-      const gG = this.add.graphics().setDepth(d * 4)      // ground
       const gB = this.add.graphics().setDepth(d * 4 + 1)  // buildings
-      const gW = this.add.graphics().setDepth(d * 4 + 2)  // windows / decor
+      const gW = this.add.graphics().setDepth(d * 4 + 2)  // windows / decor / lamps
 
       for (let col = Math.max(0, d - GR + 1); col <= Math.min(d, GC - 1); col++) {
         const row = d - col
         const { sx, sy } = ts(col, row)
         const type = GRID[row]?.[col]
         if (!type) continue
-        this.renderGround(gG, sx, sy, col, row, type)
+        this.renderGround(sx, sy, col, row, type, d * 4)
         this.renderBuilding(gB, gW, sx, sy, col, row, type)
       }
     }
     this.addNeighbourhoodLabels()
   }
 
-  // ── Ground ────────────────────────────────────────────────────────────────
-  private renderGround(g: Phaser.GameObjects.Graphics, sx: number, sy: number, col: number, row: number, type: T) {
+  // ── Ground (sprite-based) ─────────────────────────────────────────────────
+  // Tiles are 100×65 RGBA PNGs (Kenney Isometric Roads pack).
+  // Diamond top apex = sprite pixel (50,0). We place at (sx, sy-HH) with
+  // origin(0.5,0) so the apex lands exactly on the iso top-of-tile point.
+  private renderGround(sx: number, sy: number, col: number, row: number, type: T, depth: number) {
+    let key: string
     switch (type) {
-      case 'water':
-        diamond(g, sx, sy, 0x0a3d6b)
-        g.fillStyle(0x1a6aaa, 0.18)
-        g.fillPoints(fp([{ x:sx, y:sy-HH }, { x:sx+HW*0.55, y:sy-HH*0.3 }, { x:sx, y:sy-HH*0.1 }]), true)
-        break
-      case 'beach':
-        diamond(g, sx, sy, 0xc8a830)
-        diamond(g, sx, sy, 0xe0c060, 0.22)
-        break
-      case 'park':
-        diamond(g, sx, sy, 0x1e4e1e)
-        g.fillStyle(0x2a6e2a, 0.35)
-        g.fillPoints(fp([{ x:sx, y:sy-HH }, { x:sx+HW*0.55, y:sy-HH*0.2 }, { x:sx, y:sy-HH*0.3 }]), true)
-        break
-      case 'plaza':
-        diamond(g, sx, sy, 0x6060a0)
-        g.lineStyle(0.8, 0x8080c0, 0.3)
-        g.lineBetween(sx, sy-HH, sx, sy+HH)
-        g.lineBetween(sx-HW, sy, sx+HW, sy)
-        break
+      case 'water': key = 'tile-water'; break
+      case 'beach': key = 'tile-beach'; break
+      case 'park':  key = 'tile-grass'; break
+      case 'plaza': key = 'tile-lot';   break
       case 'road': {
-        // Visible asphalt
-        diamond(g, sx, sy, 0x2c2c42)
-        // Curb edge highlight (lighter rim)
-        g.lineStyle(1, 0x5a5a7a, 0.55)
-        g.strokePoints(fp([{ x:sx, y:sy-HH }, { x:sx+HW, y:sy }, { x:sx, y:sy+HH }, { x:sx-HW, y:sy }]), true)
-        // Direction-aware centre dashes
-        // NS road (col === 6,12,18): runs SW in screen space
-        // EW road (row === 6,12,18): runs SE in screen space
-        g.lineStyle(1.5, 0xffffff, 0.28)
-        const nsRoad = col === 6 || col === 12 || col === 18
-        if (nsRoad) {
-          // SW direction: top-right → bottom-left
-          g.lineBetween(sx + HW * 0.45, sy - HH * 0.45, sx - HW * 0.45, sy + HH * 0.45)
-        } else {
-          // SE direction: top-left → bottom-right
-          g.lineBetween(sx - HW * 0.45, sy - HH * 0.45, sx + HW * 0.45, sy + HH * 0.45)
-        }
+        // col=6/12/18 roads run SW in screen → EW sprite
+        // row=6/12/18 roads run SE in screen → NS sprite
+        const isColRoad = col === 6 || col === 12 || col === 18
+        key = isColRoad ? 'tile-road-ew' : 'tile-road-ns'
         break
       }
-      case 'inter': {
-        diamond(g, sx, sy, 0x222235)
-        // Crosswalk stripes in both directions
-        g.fillStyle(0x4a4a6a, 0.55)
-        for (let i = -1; i <= 1; i++) {
-          // SE stripes
-          const offSE = i * HW * 0.28
-          g.fillPoints(fp([
-            { x:sx-offSE-4, y:sy-HH*0.4 }, { x:sx-offSE+4, y:sy-HH*0.4 },
-            { x:sx+offSE+4, y:sy+HH*0.4 }, { x:sx+offSE-4, y:sy+HH*0.4 },
-          ]), true)
-          // SW stripes
-          const offSW = i * HW * 0.28
-          g.fillPoints(fp([
-            { x:sx+offSW-4, y:sy-HH*0.4 }, { x:sx+offSW+4, y:sy-HH*0.4 },
-            { x:sx-offSW+4, y:sy+HH*0.4 }, { x:sx-offSW-4, y:sy+HH*0.4 },
-          ]), true)
-        }
-        break
-      }
-      case 'res':
-        diamond(g, sx, sy, 0x302820)
-        break
-      case 'com':
-        diamond(g, sx, sy, 0x202838)
-        break
-      case 'dt':
-        diamond(g, sx, sy, 0x161e30)
-        break
+      case 'inter': key = 'tile-inter'; break
+      case 'res':   key = 'tile-grass'; break
+      case 'com':   key = 'tile-grass'; break
+      case 'dt':    key = 'tile-road';  break
+      default:      key = 'tile-grass'
     }
+    this.add.image(sx, sy - HH, key).setOrigin(0.5, 0).setDepth(depth)
   }
 
   // ── Buildings ─────────────────────────────────────────────────────────────
@@ -342,9 +298,21 @@ export class CityScene extends Phaser.Scene {
     if (named) { this.drawNamedBuilding(gB, gW, sx, sy, named); return }
 
     if (type === 'park') {
-      const rng = lcg(col * 37 + row * 23)
-      if (rng() > 0.35) isoTree(gW, sx + (rng() - 0.5) * HW * 0.5, sy + (rng() - 0.5) * HH * 0.5)
-      if (rng() > 0.6)  isoTree(gW, sx + (rng() - 0.5) * HW * 0.5, sy + (rng() - 0.5) * HH * 0.5, 0.75)
+      const rng  = lcg(col * 37 + row * 23)
+      const d    = (col + row) * 4 + 0.5
+      const keys = ['tree-tall', 'tree-conifer', 'tree-conifer-short', 'tree-short']
+      if (rng() > 0.35) {
+        const key = keys[Math.floor(rng() * keys.length)]
+        const ox  = (rng() - 0.5) * HW * 0.6
+        const oy  = (rng() - 0.5) * HH * 0.6
+        this.add.image(sx + ox, sy + oy, key).setOrigin(0.5, 1).setScale(3.5).setDepth(d)
+      }
+      if (rng() > 0.55) {
+        const key = keys[Math.floor(rng() * keys.length)]
+        const ox  = (rng() - 0.5) * HW * 0.5
+        const oy  = (rng() - 0.5) * HH * 0.5
+        this.add.image(sx + ox, sy + oy, key).setOrigin(0.5, 1).setScale(2.8).setDepth(d)
+      }
       return
     }
 
@@ -449,9 +417,10 @@ export class CityScene extends Phaser.Scene {
       fontStyle: 'bold', backgroundColor: '#00000099', padding: { x:4, y:2 },
     }).setOrigin(0.5, 1).setDepth(depth + 0.1)
 
-    // Flanking trees
-    isoTree(gW, sx + HW * 0.65, sy + HH * 0.3, 0.85)
-    isoTree(gW, sx - HW * 0.7,  sy + HH * 0.3, 0.85)
+    // Flanking trees (sprite-based)
+    const td = (b.col + b.row) * 4 + 0.5
+    this.add.image(sx + HW * 0.65, sy + HH * 0.3, 'tree-conifer').setOrigin(0.5, 1).setScale(3.2).setDepth(td)
+    this.add.image(sx - HW * 0.7,  sy + HH * 0.3, 'tree-tall').setOrigin(0.5, 1).setScale(3.2).setDepth(td)
   }
 
   // ── Neighbourhood labels ──────────────────────────────────────────────────
