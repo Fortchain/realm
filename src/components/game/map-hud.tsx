@@ -5,11 +5,11 @@ import { motion, AnimatePresence } from "framer-motion"
 import { X, Plus, Minus, Locate, MapPin } from "lucide-react"
 
 // ── Iso grid constants (mirrors city-scene.ts) ────────────────────────────────
-const GC   = 20
-const GR   = 20
-const HW   = 64
-const HH   = 32
-const OX   = 1280
+const GC   = 24
+const GR   = 24
+const HW   = 48
+const HH   = 24
+const OX   = 1250
 const OY   = 160
 
 // Convert player screen-space position to fractional tile coords
@@ -27,26 +27,30 @@ function tileToScreen(col: number, row: number) {
 type Cell = 'water' | 'beach' | 'park' | 'plaza' | 'road' | 'inter' | 'res' | 'com' | 'dt'
 
 const RAW: string[][] = [
-  ['W','W','W','B','K','R','K','K','K','K','R','K','K','K','K','R','s','s','s','s'],
-  ['W','W','B','B','K','R','K','K','K','K','R','K','K','K','s','R','s','s','s','s'],
-  ['W','W','B','K','K','R','K','K','K','K','R','s','s','s','s','R','s','s','s','s'],
-  ['W','B','B','K','K','R','K','K','K','s','R','s','s','s','s','R','s','s','s','s'],
-  ['W','B','K','K','K','R','K','K','s','s','R','s','s','s','s','R','s','s','s','s'],
-  ['R','R','R','R','R','X','R','R','R','R','X','R','R','R','R','X','R','R','R','R'],
-  ['B','B','s','s','s','R','c','c','c','c','R','c','c','c','c','R','s','s','s','s'],
-  ['W','B','s','s','s','R','c','c','c','c','R','c','c','c','c','R','s','s','s','s'],
-  ['W','B','s','s','s','R','c','c','c','c','R','c','c','c','c','R','s','s','s','s'],
-  ['W','W','s','s','s','R','c','c','c','c','R','c','c','c','c','R','s','s','s','s'],
-  ['W','W','P','P','P','X','R','R','R','R','X','R','R','R','R','X','R','R','R','R'],
-  ['W','W','W','P','s','R','D','D','D','D','R','D','D','D','D','R','c','c','c','s'],
-  ['W','W','W','s','s','R','D','D','D','D','R','D','D','D','D','R','c','c','c','s'],
-  ['W','W','W','s','s','R','D','D','D','D','R','D','D','D','D','R','c','c','c','s'],
-  ['W','W','W','s','s','R','D','D','D','D','R','D','D','D','D','R','c','c','c','s'],
-  ['W','W','W','W','W','X','R','R','R','R','X','R','R','R','R','X','R','R','R','R'],
-  ['W','W','W','W','W','R','s','s','s','s','R','s','s','s','s','R','s','s','s','s'],
-  ['W','W','W','W','W','R','s','s','s','s','R','s','s','s','s','R','s','s','s','s'],
-  ['W','W','W','W','W','R','s','s','s','s','R','s','s','s','s','R','s','s','s','s'],
-  ['W','W','W','W','W','R','s','s','s','s','R','s','s','s','s','R','s','s','s','s'],
+  ['W','W','W','W','B','K','R','K','K','K','K','K','R','s','s','s','s','s','R','s','s','s','s','s'],
+  ['W','W','W','B','B','K','R','K','K','K','K','K','R','K','s','s','s','s','R','s','s','s','s','s'],
+  ['W','W','B','B','K','K','R','K','K','K','K','K','R','s','s','s','s','s','R','s','s','s','s','s'],
+  ['W','B','B','K','K','K','R','K','K','K','K','K','R','s','s','s','s','s','R','s','s','s','s','s'],
+  ['W','B','K','K','K','K','R','K','K','K','K','s','R','s','s','s','s','s','R','s','s','s','s','s'],
+  ['B','B','K','K','K','K','R','K','K','K','s','s','R','s','s','s','s','s','R','s','s','s','s','s'],
+  ['R','R','R','R','R','R','X','R','R','R','R','R','X','R','R','R','R','R','X','R','R','R','R','R'],
+  ['W','B','s','s','s','s','R','c','c','c','c','c','R','c','c','c','c','c','R','s','s','s','s','s'],
+  ['W','B','s','s','s','s','R','c','c','c','c','c','R','c','c','c','c','c','R','s','s','s','s','s'],
+  ['W','W','s','s','s','s','R','c','c','c','c','c','R','c','c','c','c','c','R','s','s','s','s','s'],
+  ['W','W','s','s','s','s','R','c','c','c','c','c','R','c','c','c','c','c','R','s','s','s','s','s'],
+  ['W','W','P','P','s','s','R','c','c','c','c','c','R','c','c','c','c','c','R','s','s','s','s','s'],
+  ['R','R','R','R','R','R','X','R','R','R','R','R','X','R','R','R','R','R','X','R','R','R','R','R'],
+  ['W','W','W','P','s','s','R','D','D','D','D','D','R','D','D','D','D','D','R','c','c','c','c','s'],
+  ['W','W','W','s','s','s','R','D','D','D','D','D','R','D','D','D','D','D','R','c','c','c','c','s'],
+  ['W','W','W','s','s','s','R','D','D','D','D','D','R','D','D','D','D','D','R','c','c','c','c','s'],
+  ['W','W','W','s','s','s','R','D','D','D','D','D','R','D','D','D','D','D','R','c','c','c','c','s'],
+  ['W','W','W','s','s','s','R','D','D','D','D','D','R','D','D','D','D','D','R','c','c','c','c','s'],
+  ['R','R','R','R','R','R','X','R','R','R','R','R','X','R','R','R','R','R','X','R','R','R','R','R'],
+  ['W','W','W','W','W','W','R','s','s','s','s','s','R','s','s','s','s','s','R','s','s','s','s','s'],
+  ['W','W','W','W','W','W','R','s','s','s','s','s','R','s','s','s','s','s','R','s','s','s','s','s'],
+  ['W','W','W','W','W','W','R','s','s','s','s','s','R','s','s','s','s','s','R','s','s','s','s','s'],
+  ['W','W','W','W','W','W','R','s','s','s','s','s','R','s','s','s','s','s','R','s','s','s','s','s'],
+  ['W','W','W','W','W','W','R','s','s','s','s','s','R','s','s','s','s','s','R','s','s','s','s','s'],
 ]
 const KEY: Record<string, Cell> = { W:'water',B:'beach',K:'park',P:'plaza',R:'road',X:'inter',s:'res',c:'com',D:'dt' }
 const GRID: Cell[][] = RAW.map(r => r.map(c => KEY[c]))
@@ -58,26 +62,26 @@ const CELL_COLOR: Record<Cell, string> = {
 
 // ── Building markers (tile positions) ─────────────────────────────────────────
 const MARKERS = [
-  { id:'bank',       name:'First Realm Bank',  col:7,  row:11, color:'#10b981', icon:'🏦', available:true  },
-  { id:'library',    name:'City Library',       col:12, row:2,  color:'#3b82f6', icon:'📚', available:true  },
-  { id:'gym',        name:'Iron District Gym',  col:2,  row:7,  color:'#f97316', icon:'🏋️', available:false },
-  { id:'hospital',   name:'Realm Medical',      col:12, row:8,  color:'#ef4444', icon:'🏥', available:false },
-  { id:'university', name:'Realm University',   col:16, row:2,  color:'#8b5cf6', icon:'🎓', available:false },
-  { id:'mall',       name:'The Mall',           col:16, row:11, color:'#ec4899', icon:'🛍️', available:false },
-  { id:'government', name:'City Hall',          col:7,  row:13, color:'#64748b', icon:'🏛️', available:false },
-  { id:'home',       name:'Your Home',          col:17, row:1,  color:'#f59e0b', icon:'🏠', available:false },
-  { id:'office',     name:'Office Tower',       col:8,  row:12, color:'#0891b2', icon:'💼', available:false },
+  { id:'bank',       name:'First Realm Bank',  col: 8, row:13, color:'#10b981', icon:'🏦', available:true  },
+  { id:'library',    name:'City Library',       col:14, row: 2, color:'#3b82f6', icon:'📚', available:true  },
+  { id:'gym',        name:'Iron District Gym',  col: 3, row: 8, color:'#f97316', icon:'🏋️', available:false },
+  { id:'hospital',   name:'Realm Medical',      col:15, row: 9, color:'#ef4444', icon:'🏥', available:false },
+  { id:'university', name:'Realm University',   col:20, row: 2, color:'#8b5cf6', icon:'🎓', available:false },
+  { id:'mall',       name:'The Mall',           col:20, row:14, color:'#ec4899', icon:'🛍️', available:false },
+  { id:'government', name:'City Hall',          col: 8, row:16, color:'#64748b', icon:'🏛️', available:false },
+  { id:'home',       name:'Your Home',          col:21, row: 1, color:'#f59e0b', icon:'🏠', available:false },
+  { id:'office',     name:'Office Tower',       col: 9, row:14, color:'#0891b2', icon:'💼', available:false },
 ]
 
 // ── Quick-travel waypoints ────────────────────────────────────────────────────
 const WAYPOINTS = [
-  { name: 'Downtown',      col:  8, row: 10 },
-  { name: 'Balboa Park',   col:  8, row:  2 },
-  { name: 'Pacific Beach', col:  1, row:  7 },
-  { name: 'La Jolla',      col: 12, row:  1 },
-  { name: 'Hillcrest',     col:  8, row:  5 },
-  { name: 'UTC',           col: 16, row:  7 },
-  { name: 'North Park',    col: 16, row: 12 },
+  { name: 'Downtown',      col:  9, row: 12 },
+  { name: 'Balboa Park',   col:  9, row:  2 },
+  { name: 'Pacific Beach', col:  1, row:  8 },
+  { name: 'La Jolla',      col: 14, row:  1 },
+  { name: 'Hillcrest',     col:  9, row:  6 },
+  { name: 'UTC',           col: 20, row:  6 },
+  { name: 'North Park',    col: 20, row: 12 },
 ]
 
 // SVG viewBox size (arbitrary logical units for the top-down grid)
@@ -142,13 +146,13 @@ function CityMapSVG({
 
       {/* Neighbourhood labels */}
       {showLabels && [
-        { t:'DOWNTOWN',      col: 8,  row:12 },
-        { t:'BALBOA PARK',   col: 8,  row: 2 },
-        { t:'PACIFIC BEACH', col: 1,  row: 7 },
-        { t:'HILLCREST',     col: 8,  row: 7 },
-        { t:'LA JOLLA',      col:12,  row: 1 },
-        { t:'UTC',           col:16,  row: 7 },
-        { t:'NORTH PARK',    col:16,  row:12 },
+        { t:'DOWNTOWN',      col: 9,  row:14 },
+        { t:'BALBOA PARK',   col: 9,  row: 2 },
+        { t:'PACIFIC BEACH', col: 1,  row: 8 },
+        { t:'HILLCREST',     col: 9,  row: 8 },
+        { t:'LA JOLLA',      col:14,  row: 1 },
+        { t:'UTC',           col:20,  row: 8 },
+        { t:'NORTH PARK',    col:20,  row:14 },
       ].map(l => (
         <text key={l.t}
           x={(l.col + 0.5) * CELL_PX} y={(l.row + 0.5) * CELL_PX}
@@ -288,13 +292,13 @@ function FullMap({ playerScreenPos, onClose, onTeleport }: {
     if (!cell) return 'Realm City'
     if (cell === 'water') return 'Pacific Ocean'
     if (cell === 'beach') return 'Pacific Beach'
-    if (cell === 'park') return 'Balboa Park'
-    if (cell === 'plaza') return 'Embarcadero Plaza'
-    if (r >= 11 && r <= 14 && c >= 6 && c <= 14) return 'Downtown'
-    if (r <= 4 && c >= 11) return 'La Jolla'
-    if (c >= 16 && r >= 6) return 'UTC'
+    if (cell === 'park')  return 'Balboa Park'
+    if (cell === 'plaza') return 'Embarcadero'
+    if (r >= 13 && r <= 17 && c >= 7 && c <= 17) return 'Downtown'
+    if (r <= 5 && c >= 13) return 'La Jolla'
+    if (c >= 19 && r >= 7) return 'UTC'
     if (c <= 2) return 'Pacific Beach'
-    if (r >= 6 && r <= 9 && c >= 6) return 'Hillcrest'
+    if (r >= 7 && r <= 11 && c >= 7) return 'Hillcrest'
     return 'Realm City'
   }
 
@@ -444,8 +448,8 @@ function FullMap({ playerScreenPos, onClose, onTeleport }: {
 
 // ── Main export ───────────────────────────────────────────────────────────────
 export function MapHUD() {
-  // Player spawn: tile (7, 10), converted to screen space
-  const spawn = tileToScreen(7, 10)
+  // Player spawn: tile (8, 12) on road near downtown
+  const spawn = tileToScreen(8, 12)
   const [playerScreenPos, setPlayerScreenPos] = useState({ x: spawn.sx, y: spawn.sy })
   const [expanded, setExpanded] = useState(false)
 
