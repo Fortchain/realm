@@ -61,7 +61,7 @@
 ## Deployment Log
 | Date | Commit | What Shipped |
 |---|---|---|
-| 2026-09-12 | next | Isometric city rewrite: 2.5D GTA-style projection, 20×20 tile grid, painter's algo depth ordering, diagonal (W=up/S=down/A=left/D=right) movement, isometric cubes for all buildings (generic + named), park trees, road dashes, beach/water tiles, manual slide collision, MapHUD converted to top-down minimap with iso↔tile coordinate bridge |
+| 2026-09-12 | b9bc059 | Isometric city rewrite: 2.5D GTA-style projection, 20×20 tile grid, painter's algo depth ordering, diagonal (W=up/S=down/A=left/D=right) movement, isometric cubes for all buildings (generic + named), park trees, road dashes, beach/water tiles, manual slide collision, MapHUD converted to top-down minimap with iso↔tile coordinate bridge |
 | 2026-09-12 | 2243877 | Builder v2: click-drag to draw any size, multi-select (Shift+click), group drag-move, Ctrl+C/Ctrl+V chain paste with directional repeat (E/S/W/N), WASD disabled while typing in input fields |
 | 2026-09-12 | 15d8fa7 | City Builder at /builder: blank 6000×6000 Phaser canvas, 20-type object palette (terrain/roads/buildings/nature/props), select/place/erase tools, drag-to-move, 8-handle resize, right-click pan, scroll zoom, WASD pan, grid snap (G toggle), color picker, object labels, save/load per user via Postgres CityMap model |
 | 2026-09-12 | 56c30cc | Full city map revamp: 4800×4800 square sandbox, 12×12 grid, physics collision (player walks streets/parks/beach only), 0.65 zoom (100-story view), crosswalks, lane markings, beach waves, tree canopies, fountain plazas, updated MapHUD to match new world |
