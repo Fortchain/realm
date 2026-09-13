@@ -61,6 +61,7 @@
 ## Deployment Log
 | Date | Commit | What Shipped |
 |---|---|---|
+| 2026-09-12 | — | Road fix + street lamps: visible asphalt (0x2c2c42), curb edge highlights, direction-aware centre dashes (NS roads SW-direction, EW roads SE-direction), improved intersection crosswalks, street lamp sprites (pole+arm+warm glow) on NS roads every 3rd tile + EW roads every 3rd tile |
 | 2026-09-12 | 450c4ff | Iso v2: 24×24 grid, free movement (walk anywhere except water), smaller buildings + floor height, window sprites on SE/SW faces (night-city lit windows), improved player sprite (detailed face, hair, jacket, shoes), road dashes, park trees, beach/water tiles, 4-direction walk animation |
 | 2026-09-12 | b9bc059 | Isometric city rewrite: 2.5D GTA-style projection, 20×20 tile grid, painter's algo depth ordering, diagonal (W=up/S=down/A=left/D=right) movement, isometric cubes for all buildings (generic + named), park trees, road dashes, beach/water tiles, manual slide collision, MapHUD converted to top-down minimap with iso↔tile coordinate bridge |
 | 2026-09-12 | 2243877 | Builder v2: click-drag to draw any size, multi-select (Shift+click), group drag-move, Ctrl+C/Ctrl+V chain paste with directional repeat (E/S/W/N), WASD disabled while typing in input fields |

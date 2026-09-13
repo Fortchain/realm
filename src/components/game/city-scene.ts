@@ -174,6 +174,28 @@ function isoTree(g: Phaser.GameObjects.Graphics, sx: number, sy: number, scale =
   g.fillCircle(sx - 3, sy - 16 * scale, 4 * scale)
 }
 
+// ── Draw: street lamp ─────────────────────────────────────────────────────────
+function streetLamp(g: Phaser.GameObjects.Graphics, sx: number, sy: number) {
+  // Ground halo
+  g.fillStyle(0xffcc44, 0.07)
+  g.fillEllipse(sx, sy + 4, 28, 12)
+  // Pole
+  g.fillStyle(0x8888aa)
+  g.fillRect(sx - 1, sy - 22, 2, 22)
+  // Arm extending toward viewer (SE direction)
+  g.fillStyle(0x8888aa)
+  g.fillRect(sx, sy - 22, 6, 2)
+  // Lamp head
+  g.fillStyle(0x555577)
+  g.fillRect(sx + 3, sy - 24, 8, 4)
+  // Warm glow
+  g.fillStyle(0xffdd88, 0.65)
+  g.fillEllipse(sx + 7, sy - 22, 6, 4)
+  // Glow bloom
+  g.fillStyle(0xffdd88, 0.12)
+  g.fillEllipse(sx + 7, sy - 20, 18, 14)
+}
+
 // ═════════════════════════════════════════════════════════════════════════════
 export class CityScene extends Phaser.Scene {
   private playerContainer!: Phaser.GameObjects.Container
@@ -229,7 +251,7 @@ export class CityScene extends Phaser.Scene {
         const { sx, sy } = ts(col, row)
         const type = GRID[row]?.[col]
         if (!type) continue
-        this.renderGround(gG, sx, sy, type)
+        this.renderGround(gG, sx, sy, col, row, type)
         this.renderBuilding(gB, gW, sx, sy, col, row, type)
       }
     }
@@ -237,11 +259,10 @@ export class CityScene extends Phaser.Scene {
   }
 
   // ── Ground ────────────────────────────────────────────────────────────────
-  private renderGround(g: Phaser.GameObjects.Graphics, sx: number, sy: number, type: T) {
+  private renderGround(g: Phaser.GameObjects.Graphics, sx: number, sy: number, col: number, row: number, type: T) {
     switch (type) {
       case 'water':
         diamond(g, sx, sy, 0x0a3d6b)
-        // wave highlight strip
         g.fillStyle(0x1a6aaa, 0.18)
         g.fillPoints(fp([{ x:sx, y:sy-HH }, { x:sx+HW*0.55, y:sy-HH*0.3 }, { x:sx, y:sy-HH*0.1 }]), true)
         break
@@ -260,23 +281,46 @@ export class CityScene extends Phaser.Scene {
         g.lineBetween(sx, sy-HH, sx, sy+HH)
         g.lineBetween(sx-HW, sy, sx+HW, sy)
         break
-      case 'road':
-        diamond(g, sx, sy, 0x1e1e30)
-        g.lineStyle(1.2, 0xffffff, 0.10)
-        g.lineBetween(sx - HW * 0.6, sy, sx + HW * 0.6, sy)
+      case 'road': {
+        // Visible asphalt
+        diamond(g, sx, sy, 0x2c2c42)
+        // Curb edge highlight (lighter rim)
+        g.lineStyle(1, 0x5a5a7a, 0.55)
+        g.strokePoints(fp([{ x:sx, y:sy-HH }, { x:sx+HW, y:sy }, { x:sx, y:sy+HH }, { x:sx-HW, y:sy }]), true)
+        // Direction-aware centre dashes
+        // NS road (col === 6,12,18): runs SW in screen space
+        // EW road (row === 6,12,18): runs SE in screen space
+        g.lineStyle(1.5, 0xffffff, 0.28)
+        const nsRoad = col === 6 || col === 12 || col === 18
+        if (nsRoad) {
+          // SW direction: top-right → bottom-left
+          g.lineBetween(sx + HW * 0.45, sy - HH * 0.45, sx - HW * 0.45, sy + HH * 0.45)
+        } else {
+          // SE direction: top-left → bottom-right
+          g.lineBetween(sx - HW * 0.45, sy - HH * 0.45, sx + HW * 0.45, sy + HH * 0.45)
+        }
         break
-      case 'inter':
-        diamond(g, sx, sy, 0x181828)
-        // crosswalk marks
-        g.fillStyle(0x303048, 0.5)
+      }
+      case 'inter': {
+        diamond(g, sx, sy, 0x222235)
+        // Crosswalk stripes in both directions
+        g.fillStyle(0x4a4a6a, 0.55)
         for (let i = -1; i <= 1; i++) {
-          const off = i * HW * 0.3
+          // SE stripes
+          const offSE = i * HW * 0.28
           g.fillPoints(fp([
-            { x:sx+off-5, y:sy-HH*0.35 }, { x:sx+off+5, y:sy-HH*0.35 },
-            { x:sx+off+5, y:sy+HH*0.35 }, { x:sx+off-5, y:sy+HH*0.35 },
+            { x:sx-offSE-4, y:sy-HH*0.4 }, { x:sx-offSE+4, y:sy-HH*0.4 },
+            { x:sx+offSE+4, y:sy+HH*0.4 }, { x:sx+offSE-4, y:sy+HH*0.4 },
+          ]), true)
+          // SW stripes
+          const offSW = i * HW * 0.28
+          g.fillPoints(fp([
+            { x:sx+offSW-4, y:sy-HH*0.4 }, { x:sx+offSW+4, y:sy-HH*0.4 },
+            { x:sx-offSW+4, y:sy+HH*0.4 }, { x:sx-offSW-4, y:sy+HH*0.4 },
           ]), true)
         }
         break
+      }
       case 'res':
         diamond(g, sx, sy, 0x302820)
         break
@@ -301,6 +345,19 @@ export class CityScene extends Phaser.Scene {
       const rng = lcg(col * 37 + row * 23)
       if (rng() > 0.35) isoTree(gW, sx + (rng() - 0.5) * HW * 0.5, sy + (rng() - 0.5) * HH * 0.5)
       if (rng() > 0.6)  isoTree(gW, sx + (rng() - 0.5) * HW * 0.5, sy + (rng() - 0.5) * HH * 0.5, 0.75)
+      return
+    }
+
+    // Street lamps on NS roads every 3rd tile (lamp on SE side)
+    if (type === 'road') {
+      const nsRoad = col === 6 || col === 12 || col === 18
+      if (nsRoad && row % 3 === 1) {
+        // SE side of NS road = offset toward +col direction
+        streetLamp(gW, sx + HW * 0.55, sy + HH * 0.3)
+      } else if (!nsRoad && col % 3 === 1) {
+        // Upper side of EW road = offset toward -row direction
+        streetLamp(gW, sx - HW * 0.15, sy - HH * 0.7)
+      }
       return
     }
 
