@@ -11,6 +11,8 @@ export type ObjectType =
 
 export type Tool = "select" | "place" | "erase"
 
+export type PasteDir = "east" | "south" | "west" | "north"
+
 export interface MapObject {
   id: string
   type: ObjectType
@@ -26,7 +28,7 @@ export interface MapObject {
 
 const WORLD = 6000
 const SNAP = 40
-const HANDLE_SCREEN_R = 7  // handle radius in screen pixels
+const HANDLE_SCREEN_R = 7
 
 const DEFAULT_SIZE: Record<ObjectType, [number, number]> = {
   park: [200, 200], water: [200, 150], beach: [300, 80], plaza: [160, 160],
@@ -92,31 +94,45 @@ function genId(): string {
 // ── EditorScene ───────────────────────────────────────────────────────────────
 
 export class EditorScene extends Phaser.Scene {
-  // State
+  // Public state (read by React via direct ref)
   objects: MapObject[] = []
   tool: Tool = "select"
   activeType: ObjectType = "building"
-  selectedId: string | null = null
+  selectedIds = new Set<string>()
   snapEnabled = true
+  pasteDir: PasteDir = "east"
 
   // Graphics
   private bgGfx!: Phaser.GameObjects.Graphics
   private selGfx!: Phaser.GameObjects.Graphics
   private objGfxMap = new Map<string, Phaser.GameObjects.Graphics>()
 
-  // Drag state
+  // Select drag (move / resize)
   private dragging = false
   private dragMode: "move" | "resize" | null = null
   private dragHandleIdx = -1
   private dragStartWorld = { x: 0, y: 0 }
-  private dragObjSnap = { x: 0, y: 0, w: 0, h: 0 }
+  private dragObjSnaps = new Map<string, { x: number; y: number }>()  // group move
+  private dragSingleSnap = { x: 0, y: 0, w: 0, h: 0 }                // resize only
 
-  // Pan state
+  // Place drag (draw to place)
+  private placeDragActive = false
+  private placeDragStart = { x: 0, y: 0 }
+
+  // Camera pan
   private panning = false
   private panStart = { sx: 0, sy: 0, scrollX: 0, scrollY: 0 }
 
-  // Last pointer world position (for place preview)
+  // Last pointer world position (used for place preview ghost)
   private lastWorld = { x: WORLD / 2, y: WORLD / 2 }
+
+  // Clipboard
+  private clipPattern: Array<{
+    type: ObjectType; relX: number; relY: number
+    w: number; h: number; color: string; label?: string
+  }> = []
+  private clipBounds = { w: 0, h: 0 }
+  private pasteAnchor: { x: number; y: number } | null = null
 
   private wasd!: {
     w: Phaser.Input.Keyboard.Key
@@ -124,15 +140,16 @@ export class EditorScene extends Phaser.Scene {
     s: Phaser.Input.Keyboard.Key
     d: Phaser.Input.Keyboard.Key
   }
-
+  private shiftKey!: Phaser.Input.Keyboard.Key
   private _cleanup?: () => void
 
   constructor() {
     super({ key: "EditorScene" })
   }
 
+  // ── Lifecycle ────────────────────────────────────────────────────────────────
+
   create() {
-    // Background + grid
     this.bgGfx = this.add.graphics().setDepth(0)
     this.bgGfx.fillStyle(0xffffff)
     this.bgGfx.fillRect(0, 0, WORLD, WORLD)
@@ -140,24 +157,20 @@ export class EditorScene extends Phaser.Scene {
     this.bgGfx.lineStyle(2, 0x94a3b8, 1)
     this.bgGfx.strokeRect(0, 0, WORLD, WORLD)
 
-    // Selection / preview overlay (always on top)
     this.selGfx = this.add.graphics().setDepth(100)
 
-    // Camera
     this.cameras.main.setBounds(0, 0, WORLD, WORLD)
     this.cameras.main.setZoom(0.8)
     this.cameras.main.centerOn(WORLD / 2, WORLD / 2)
 
-    // Pointer events
-    this.input.on("pointerdown",  this.onPointerDown,  this)
-    this.input.on("pointermove",  this.onPointerMove,  this)
-    this.input.on("pointerup",    this.onPointerUp,    this)
+    this.input.on("pointerdown", this.onPointerDown, this)
+    this.input.on("pointermove", this.onPointerMove, this)
+    this.input.on("pointerup",   this.onPointerUp,   this)
     this.input.on("wheel", (_p: unknown, _g: unknown, _dx: number, dy: number) => {
       const cam = this.cameras.main
       cam.setZoom(Phaser.Math.Clamp(cam.zoom - dy * 0.001, 0.15, 3))
     }, this)
 
-    // Keyboard
     const kb = this.input.keyboard!
     this.wasd = {
       w: kb.addKey(Phaser.Input.Keyboard.KeyCodes.W),
@@ -165,51 +178,64 @@ export class EditorScene extends Phaser.Scene {
       s: kb.addKey(Phaser.Input.Keyboard.KeyCodes.S),
       d: kb.addKey(Phaser.Input.Keyboard.KeyCodes.D),
     }
-    kb.on("keydown-DELETE",    this.deleteSelected, this)
-    kb.on("keydown-BACKSPACE", this.deleteSelected, this)
-    kb.on("keydown-G", () => {
-      this.snapEnabled = !this.snapEnabled
-      window.dispatchEvent(new CustomEvent("builder:snap-changed", { detail: { snap: this.snapEnabled } }))
-    }, this)
-    kb.on("keydown-ESC", () => {
-      this.selectedId = null
-      window.dispatchEvent(new CustomEvent("builder:selection-changed", { detail: { id: null } }))
-    }, this)
+    this.shiftKey = kb.addKey(Phaser.Input.Keyboard.KeyCodes.SHIFT)
 
-    // Window events from React
+    // Global keyboard (handles Ctrl+C/V, Delete, G, ESC without eating input field keystrokes)
+    const onKeydown = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement
+      if (t.tagName === "INPUT" || t.tagName === "TEXTAREA") return
+      if ((e.ctrlKey || e.metaKey) && e.key === "c") { e.preventDefault(); this.copySelected() }
+      if ((e.ctrlKey || e.metaKey) && e.key === "v") { e.preventDefault(); this.pasteClipboard() }
+      if (e.key === "Delete" || e.key === "Backspace") this.deleteSelected()
+      if (e.key === "Escape") { this.selectedIds.clear(); this.emitSelection() }
+      if (e.key === "g" || e.key === "G") {
+        this.snapEnabled = !this.snapEnabled
+        window.dispatchEvent(new CustomEvent("builder:snap-changed", { detail: { snap: this.snapEnabled } }))
+      }
+    }
+    document.addEventListener("keydown", onKeydown)
+
+    // Window events from React toolbar
     const onSetTool = (e: Event) => {
       this.tool = (e as CustomEvent<{ tool: Tool }>).detail.tool
-      this.selectedId = null
+      this.selectedIds.clear()
+      this.placeDragActive = false
       this.selGfx.clear()
     }
     const onSetType = (e: Event) => {
       this.activeType = (e as CustomEvent<{ objectType: ObjectType }>).detail.objectType
+    }
+    const onSetPasteDir = (e: Event) => {
+      this.pasteDir = (e as CustomEvent<{ dir: PasteDir }>).detail.dir
     }
     const onLoadObjects = (e: Event) => {
       const { objects } = (e as CustomEvent<{ objects: MapObject[] }>).detail
       this.objGfxMap.forEach(g => g.destroy())
       this.objGfxMap.clear()
       this.objects = objects
-      objects.forEach(obj => this.createObjGfx(obj))
+      objects.forEach(o => this.createObjGfx(o))
     }
     const onClear = () => {
       this.objGfxMap.forEach(g => g.destroy())
       this.objGfxMap.clear()
       this.objects = []
-      this.selectedId = null
+      this.selectedIds.clear()
       this.selGfx.clear()
       this.emitObjects()
     }
 
     window.addEventListener("builder:set-tool",      onSetTool)
     window.addEventListener("builder:set-type",      onSetType)
+    window.addEventListener("builder:set-paste-dir", onSetPasteDir)
     window.addEventListener("builder:load-objects",  onLoadObjects)
     window.addEventListener("builder:clear",         onClear)
 
     this._cleanup = () => {
-      window.removeEventListener("builder:set-tool",     onSetTool)
-      window.removeEventListener("builder:set-type",     onSetType)
-      window.removeEventListener("builder:load-objects", onLoadObjects)
+      document.removeEventListener("keydown", onKeydown)
+      window.removeEventListener("builder:set-tool",      onSetTool)
+      window.removeEventListener("builder:set-type",      onSetType)
+      window.removeEventListener("builder:set-paste-dir", onSetPasteDir)
+      window.removeEventListener("builder:load-objects",  onLoadObjects)
       window.removeEventListener("builder:clear",        onClear)
     }
   }
@@ -219,51 +245,56 @@ export class EditorScene extends Phaser.Scene {
     this.game.canvas.style.cursor = "default"
   }
 
-  // ── Grid ────────────────────────────────────────────────────────────────────
+  // ── Grid ─────────────────────────────────────────────────────────────────────
 
   private drawGrid() {
     this.bgGfx.lineStyle(1, 0xe2e8f0, 1)
     for (let x = 0; x <= WORLD; x += SNAP) this.bgGfx.lineBetween(x, 0, x, WORLD)
     for (let y = 0; y <= WORLD; y += SNAP) this.bgGfx.lineBetween(0, y, WORLD, y)
-    // Major lines every 200px
     this.bgGfx.lineStyle(1, 0xd1d5db, 1)
     for (let x = 0; x <= WORLD; x += 200) this.bgGfx.lineBetween(x, 0, x, WORLD)
     for (let y = 0; y <= WORLD; y += 200) this.bgGfx.lineBetween(0, y, WORLD, y)
   }
 
-  // ── Update ──────────────────────────────────────────────────────────────────
+  // ── Update ───────────────────────────────────────────────────────────────────
 
   update(_t: number, d: number) {
-    const cam = this.cameras.main
-    const speed = 500 / cam.zoom
-    const dt = d / 1000
-    if (this.wasd.w.isDown) cam.scrollY -= speed * dt
-    if (this.wasd.s.isDown) cam.scrollY += speed * dt
-    if (this.wasd.a.isDown) cam.scrollX -= speed * dt
-    if (this.wasd.d.isDown) cam.scrollX += speed * dt
+    const activeEl = document.activeElement as HTMLElement | null
+    const inputFocused = activeEl?.tagName === "INPUT" || activeEl?.tagName === "TEXTAREA"
+
+    if (!inputFocused) {
+      const cam = this.cameras.main
+      const speed = 500 / cam.zoom
+      const dt = d / 1000
+      if (this.wasd.w.isDown) cam.scrollY -= speed * dt
+      if (this.wasd.s.isDown) cam.scrollY += speed * dt
+      if (this.wasd.a.isDown) cam.scrollX -= speed * dt
+      if (this.wasd.d.isDown) cam.scrollX += speed * dt
+    }
 
     this.renderOverlay()
   }
 
-  // ── Hit testing ─────────────────────────────────────────────────────────────
+  // ── Hit testing ──────────────────────────────────────────────────────────────
 
   private handles(obj: MapObject) {
     const { x, y, w, h } = obj
     return [
-      { x,       y       },  // 0 TL
-      { x: x+w/2, y      },  // 1 TM
-      { x: x+w,  y       },  // 2 TR
-      { x,       y: y+h/2 }, // 3 ML
-      { x: x+w,  y: y+h/2 }, // 4 MR
-      { x,       y: y+h  },  // 5 BL
-      { x: x+w/2, y: y+h },  // 6 BM
-      { x: x+w,  y: y+h  },  // 7 BR
+      { x,        y        }, // 0 TL
+      { x: x+w/2, y        }, // 1 TM
+      { x: x+w,   y        }, // 2 TR
+      { x,        y: y+h/2 }, // 3 ML
+      { x: x+w,   y: y+h/2 }, // 4 MR
+      { x,        y: y+h   }, // 5 BL
+      { x: x+w/2, y: y+h   }, // 6 BM
+      { x: x+w,   y: y+h   }, // 7 BR
     ]
   }
 
   private hitHandles(wx: number, wy: number): number {
-    if (!this.selectedId) return -1
-    const obj = this.objects.find(o => o.id === this.selectedId)
+    if (this.selectedIds.size !== 1) return -1
+    const id = [...this.selectedIds][0]
+    const obj = this.objects.find(o => o.id === id)
     if (!obj) return -1
     const r = HANDLE_SCREEN_R / this.cameras.main.zoom
     for (let i = 0; i < 8; i++) {
@@ -282,7 +313,7 @@ export class EditorScene extends Phaser.Scene {
     return null
   }
 
-  // ── Pointer events ──────────────────────────────────────────────────────────
+  // ── Pointer events ───────────────────────────────────────────────────────────
 
   private onPointerDown(pointer: Phaser.Input.Pointer) {
     if (pointer.rightButtonDown()) {
@@ -292,31 +323,58 @@ export class EditorScene extends Phaser.Scene {
     }
 
     const wx = pointer.worldX, wy = pointer.worldY
+    const isShift = this.shiftKey?.isDown ?? false
 
     if (this.tool === "select") {
-      const hIdx = this.hitHandles(wx, wy)
-      if (hIdx >= 0 && this.selectedId) {
-        const obj = this.objects.find(o => o.id === this.selectedId)!
-        this.dragging = true; this.dragMode = "resize"; this.dragHandleIdx = hIdx
-        this.dragStartWorld = { x: wx, y: wy }
-        this.dragObjSnap = { x: obj.x, y: obj.y, w: obj.w, h: obj.h }
-        return
+      // Resize handle takes priority (only with exactly one selection)
+      if (!isShift) {
+        const hIdx = this.hitHandles(wx, wy)
+        if (hIdx >= 0) {
+          const id = [...this.selectedIds][0]
+          const obj = this.objects.find(o => o.id === id)!
+          this.dragging = true; this.dragMode = "resize"; this.dragHandleIdx = hIdx
+          this.dragStartWorld = { x: wx, y: wy }
+          this.dragSingleSnap = { x: obj.x, y: obj.y, w: obj.w, h: obj.h }
+          return
+        }
       }
+
       const hitId = this.hitObjects(wx, wy)
+
       if (hitId) {
-        const obj = this.objects.find(o => o.id === hitId)!
-        this.selectedId = hitId
+        if (isShift) {
+          // Shift+click: toggle membership in selection
+          if (this.selectedIds.has(hitId)) this.selectedIds.delete(hitId)
+          else this.selectedIds.add(hitId)
+          this.emitSelection()
+          return
+        }
+
+        if (!this.selectedIds.has(hitId)) {
+          // Click on unselected object: select just it
+          this.selectedIds.clear()
+          this.selectedIds.add(hitId)
+        }
+        // Start group drag (works whether 1 or many are selected)
         this.dragging = true; this.dragMode = "move"
         this.dragStartWorld = { x: wx, y: wy }
-        this.dragObjSnap = { x: obj.x, y: obj.y, w: obj.w, h: obj.h }
-        this.emitSelection(hitId, obj)
+        this.dragObjSnaps.clear()
+        this.selectedIds.forEach(id => {
+          const o = this.objects.find(obj => obj.id === id)
+          if (o) this.dragObjSnaps.set(id, { x: o.x, y: o.y })
+        })
+        this.emitSelection()
         return
       }
-      this.selectedId = null
-      this.emitSelection(null)
+
+      // Click on empty space: clear selection
+      this.selectedIds.clear()
+      this.emitSelection()
 
     } else if (this.tool === "place") {
-      this.placeObject(wx, wy)
+      // Start place-drag — commit happens on pointerup
+      this.placeDragActive = true
+      this.placeDragStart = { x: wx, y: wy }
 
     } else if (this.tool === "erase") {
       const hitId = this.hitObjects(wx, wy)
@@ -337,24 +395,28 @@ export class EditorScene extends Phaser.Scene {
       return
     }
 
-    if (this.dragging && this.dragMode === "move" && this.selectedId) {
-      const obj = this.objects.find(o => o.id === this.selectedId)
-      if (!obj) return
-      const dx = wx - this.dragStartWorld.x, dy = wy - this.dragStartWorld.y
-      let nx = this.dragObjSnap.x + dx, ny = this.dragObjSnap.y + dy
-      if (this.snapEnabled) { nx = snapTo(nx); ny = snapTo(ny) }
-      obj.x = Phaser.Math.Clamp(nx, 0, WORLD - obj.w)
-      obj.y = Phaser.Math.Clamp(ny, 0, WORLD - obj.h)
-      this.redrawObj(obj)
-      this.emitSelection(obj.id, obj)
+    if (this.dragging && this.dragMode === "move") {
+      const rawDx = wx - this.dragStartWorld.x, rawDy = wy - this.dragStartWorld.y
+      this.selectedIds.forEach(id => {
+        const obj = this.objects.find(o => o.id === id)
+        const snap = this.dragObjSnaps.get(id)
+        if (!obj || !snap) return
+        let nx = snap.x + rawDx, ny = snap.y + rawDy
+        if (this.snapEnabled) { nx = snapTo(nx); ny = snapTo(ny) }
+        obj.x = Phaser.Math.Clamp(nx, 0, WORLD - obj.w)
+        obj.y = Phaser.Math.Clamp(ny, 0, WORLD - obj.h)
+        this.redrawObj(obj)
+      })
+      this.emitSelection()
       return
     }
 
-    if (this.dragging && this.dragMode === "resize" && this.selectedId) {
-      const obj = this.objects.find(o => o.id === this.selectedId)
+    if (this.dragging && this.dragMode === "resize") {
+      const id = [...this.selectedIds][0]
+      const obj = this.objects.find(o => o.id === id)
       if (!obj) return
       const dx = wx - this.dragStartWorld.x, dy = wy - this.dragStartWorld.y
-      const { x: ox, y: oy, w: ow, h: oh } = this.dragObjSnap
+      const { x: ox, y: oy, w: ow, h: oh } = this.dragSingleSnap
       const MIN = SNAP
       let nx = ox, ny = oy, nw = ow, nh = oh
 
@@ -375,67 +437,108 @@ export class EditorScene extends Phaser.Scene {
 
       obj.x = nx; obj.y = ny; obj.w = nw; obj.h = nh
       this.redrawObj(obj)
-      this.emitSelection(obj.id, obj)
+      this.emitSelection()
       return
     }
 
-    // Cursor
-    const hIdx = this.hitHandles(wx, wy)
-    if (hIdx >= 0) {
-      const cursors = ["nw-resize","n-resize","ne-resize","w-resize","e-resize","sw-resize","s-resize","se-resize"]
-      this.game.canvas.style.cursor = cursors[hIdx]
-    } else if (this.tool === "select" && this.hitObjects(wx, wy)) {
-      this.game.canvas.style.cursor = "grab"
-    } else if (this.tool === "place") {
-      this.game.canvas.style.cursor = "crosshair"
-    } else if (this.tool === "erase") {
-      this.game.canvas.style.cursor = this.hitObjects(wx, wy) ? "pointer" : "crosshair"
-    } else {
-      this.game.canvas.style.cursor = "default"
+    // Cursor updates (when not dragging)
+    if (!this.dragging && !this.placeDragActive) {
+      const hIdx = this.hitHandles(wx, wy)
+      if (hIdx >= 0) {
+        const cursors = ["nw-resize","n-resize","ne-resize","w-resize","e-resize","sw-resize","s-resize","se-resize"]
+        this.game.canvas.style.cursor = cursors[hIdx]
+      } else if (this.tool === "select" && this.hitObjects(wx, wy)) {
+        this.game.canvas.style.cursor = "grab"
+      } else if (this.tool === "place") {
+        this.game.canvas.style.cursor = "crosshair"
+      } else if (this.tool === "erase") {
+        this.game.canvas.style.cursor = this.hitObjects(wx, wy) ? "pointer" : "crosshair"
+      } else {
+        this.game.canvas.style.cursor = "default"
+      }
     }
   }
 
   private onPointerUp(pointer: Phaser.Input.Pointer) {
     if (pointer.rightButtonReleased()) { this.panning = false; return }
+
+    if (this.placeDragActive) {
+      this.placeDragActive = false
+      const dx = Math.abs(pointer.worldX - this.placeDragStart.x)
+      const dy = Math.abs(pointer.worldY - this.placeDragStart.y)
+      if (dx < 8 && dy < 8) {
+        // Tiny move: treat as click → place at default size
+        this.placeAtCenter(this.placeDragStart.x, this.placeDragStart.y)
+      } else {
+        // Drag: place with drawn bounds
+        const b = this.dragPlaceBounds()
+        this.placeWithBounds(b.x, b.y, b.w, b.h)
+      }
+      return
+    }
+
     if (this.dragging) {
       this.dragging = false; this.dragMode = null; this.dragHandleIdx = -1
       this.emitObjects()
     }
   }
 
-  // ── Object lifecycle ────────────────────────────────────────────────────────
+  // ── Place drag helpers ────────────────────────────────────────────────────────
 
-  placeObject(wx: number, wy: number) {
+  private dragPlaceBounds() {
+    let x = Math.min(this.placeDragStart.x, this.lastWorld.x)
+    let y = Math.min(this.placeDragStart.y, this.lastWorld.y)
+    let w = Math.abs(this.lastWorld.x - this.placeDragStart.x)
+    let h = Math.abs(this.lastWorld.y - this.placeDragStart.y)
+    if (this.snapEnabled) { x = snapTo(x); y = snapTo(y); w = snapTo(w); h = snapTo(h) }
+    return { x, y, w: Math.max(SNAP, w), h: Math.max(SNAP, h) }
+  }
+
+  private placeAtCenter(wx: number, wy: number) {
     const [dw, dh] = DEFAULT_SIZE[this.activeType]
     let x = wx - dw/2, y = wy - dh/2
     if (this.snapEnabled) { x = snapTo(x); y = snapTo(y) }
-    x = Phaser.Math.Clamp(x, 0, WORLD - dw)
-    y = Phaser.Math.Clamp(y, 0, WORLD - dh)
+    this.placeWithBounds(
+      Phaser.Math.Clamp(x, 0, WORLD - dw),
+      Phaser.Math.Clamp(y, 0, WORLD - dh),
+      dw, dh
+    )
+  }
 
+  private placeWithBounds(x: number, y: number, w: number, h: number) {
     const obj: MapObject = {
-      id: genId(), type: this.activeType, x, y, w: dw, h: dh,
+      id: genId(), type: this.activeType, x, y, w, h,
       color: numToHex(DEFAULT_COLOR[this.activeType]),
     }
     this.objects.push(obj)
     this.createObjGfx(obj)
-    this.selectedId = obj.id
-    this.emitSelection(obj.id, obj)
+    this.selectedIds.clear()
+    this.selectedIds.add(obj.id)
+    this.emitSelection()
     this.emitObjects()
   }
+
+  // ── Object lifecycle ─────────────────────────────────────────────────────────
 
   deleteObject(id: string) {
     this.objects = this.objects.filter(o => o.id !== id)
     this.objGfxMap.get(id)?.destroy()
     this.objGfxMap.delete(id)
-    if (this.selectedId === id) {
-      this.selectedId = null
-      window.dispatchEvent(new CustomEvent("builder:selection-changed", { detail: { id: null } }))
-    }
+    this.selectedIds.delete(id)
+    this.emitSelection()
     this.emitObjects()
   }
 
   deleteSelected() {
-    if (this.selectedId) this.deleteObject(this.selectedId)
+    const ids = [...this.selectedIds]
+    ids.forEach(id => {
+      this.objects = this.objects.filter(o => o.id !== id)
+      this.objGfxMap.get(id)?.destroy()
+      this.objGfxMap.delete(id)
+    })
+    this.selectedIds.clear()
+    this.emitSelection()
+    this.emitObjects()
   }
 
   updateColor(id: string, color: string) {
@@ -455,7 +558,63 @@ export class EditorScene extends Phaser.Scene {
 
   getObjects(): MapObject[] { return [...this.objects] }
 
-  // ── Graphics ────────────────────────────────────────────────────────────────
+  // ── Clipboard ────────────────────────────────────────────────────────────────
+
+  copySelected() {
+    const sel = this.objects.filter(o => this.selectedIds.has(o.id))
+    if (sel.length === 0) return
+
+    const minX = Math.min(...sel.map(o => o.x))
+    const minY = Math.min(...sel.map(o => o.y))
+    const maxX = Math.max(...sel.map(o => o.x + o.w))
+    const maxY = Math.max(...sel.map(o => o.y + o.h))
+
+    this.clipBounds = { w: maxX - minX, h: maxY - minY }
+    this.clipPattern = sel.map(o => ({
+      type: o.type, relX: o.x - minX, relY: o.y - minY,
+      w: o.w, h: o.h, color: o.color, label: o.label,
+    }))
+    // Anchor starts at the original selection so first paste goes right after it
+    this.pasteAnchor = { x: minX, y: minY }
+
+    window.dispatchEvent(new CustomEvent("builder:clipboard-changed", { detail: { count: this.clipPattern.length } }))
+  }
+
+  pasteClipboard() {
+    if (this.clipPattern.length === 0) return
+
+    let anchor: { x: number; y: number }
+    if (this.pasteAnchor === null) {
+      const cam = this.cameras.main
+      anchor = { x: cam.scrollX + cam.width / cam.zoom / 2 - this.clipBounds.w / 2, y: cam.scrollY + cam.height / cam.zoom / 2 - this.clipBounds.h / 2 }
+    } else {
+      switch (this.pasteDir) {
+        case "east":  anchor = { x: this.pasteAnchor.x + this.clipBounds.w, y: this.pasteAnchor.y }; break
+        case "south": anchor = { x: this.pasteAnchor.x, y: this.pasteAnchor.y + this.clipBounds.h }; break
+        case "west":  anchor = { x: this.pasteAnchor.x - this.clipBounds.w, y: this.pasteAnchor.y }; break
+        case "north": anchor = { x: this.pasteAnchor.x, y: this.pasteAnchor.y - this.clipBounds.h }; break
+      }
+    }
+
+    if (this.snapEnabled) { anchor.x = snapTo(anchor.x); anchor.y = snapTo(anchor.y) }
+
+    const newIds = new Set<string>()
+    this.clipPattern.forEach(p => {
+      const x = Phaser.Math.Clamp(anchor.x + p.relX, 0, WORLD - p.w)
+      const y = Phaser.Math.Clamp(anchor.y + p.relY, 0, WORLD - p.h)
+      const obj: MapObject = { id: genId(), type: p.type, x, y, w: p.w, h: p.h, color: p.color, label: p.label }
+      this.objects.push(obj)
+      this.createObjGfx(obj)
+      newIds.add(obj.id)
+    })
+
+    this.pasteAnchor = anchor
+    this.selectedIds = newIds
+    this.emitSelection()
+    this.emitObjects()
+  }
+
+  // ── Graphics ─────────────────────────────────────────────────────────────────
 
   private createObjGfx(obj: MapObject) {
     const gfx = this.add.graphics().setDepth(DEPTH_MAP[obj.type] ?? 3)
@@ -476,42 +635,77 @@ export class EditorScene extends Phaser.Scene {
     const cam = this.cameras.main
     const iz = 1 / cam.zoom
 
-    // Place preview ghost
+    // ── Place tool overlay ──────────────────────────────────────────────────
     if (this.tool === "place") {
-      const [dw, dh] = DEFAULT_SIZE[this.activeType]
-      let px = this.lastWorld.x - dw/2, py = this.lastWorld.y - dh/2
-      if (this.snapEnabled) { px = snapTo(px); py = snapTo(py) }
-      px = Phaser.Math.Clamp(px, 0, WORLD - dw)
-      py = Phaser.Math.Clamp(py, 0, WORLD - dh)
       const c = DEFAULT_COLOR[this.activeType]
-      g.fillStyle(c, 0.35)
-      g.fillRect(px, py, dw, dh)
+      let px: number, py: number, pw: number, ph: number
+
+      if (this.placeDragActive) {
+        // Live drag bounds
+        const b = this.dragPlaceBounds()
+        px = b.x; py = b.y; pw = b.w; ph = b.h
+      } else {
+        // Floating ghost at cursor
+        const [dw, dh] = DEFAULT_SIZE[this.activeType]
+        px = this.lastWorld.x - dw/2; py = this.lastWorld.y - dh/2
+        if (this.snapEnabled) { px = snapTo(px); py = snapTo(py) }
+        px = Phaser.Math.Clamp(px, 0, WORLD - dw); py = Phaser.Math.Clamp(py, 0, WORLD - dh)
+        pw = dw; ph = dh
+      }
+
+      g.fillStyle(c, 0.3)
+      g.fillRect(px, py, pw, ph)
       g.lineStyle(2 * iz, c, 0.9)
-      g.strokeRect(px, py, dw, dh)
+      g.strokeRect(px, py, pw, ph)
+
+      // Dimension label during drag
+      if (this.placeDragActive && (pw > SNAP || ph > SNAP)) {
+        // Small size readout drawn as a text-like line — we skip actual text since
+        // Phaser.GameObjects.Text needs persistent objects. The rect is enough visual feedback.
+      }
     }
 
-    // Selection box + handles
-    if (!this.selectedId) return
-    const obj = this.objects.find(o => o.id === this.selectedId)
-    if (!obj) return
+    if (this.selectedIds.size === 0) return
 
     const hr = HANDLE_SCREEN_R * iz
 
-    // Border
-    g.lineStyle(2 * iz, 0x6366f1, 1)
-    g.strokeRect(obj.x - iz, obj.y - iz, obj.w + 2*iz, obj.h + 2*iz)
-
-    // Handles
-    const hs = this.handles(obj)
-    hs.forEach((h) => {
-      g.fillStyle(0xffffff, 1)
-      g.fillCircle(h.x, h.y, hr)
+    if (this.selectedIds.size === 1) {
+      // ── Single selection: border + 8 resize handles ──────────────────────
+      const id = [...this.selectedIds][0]
+      const obj = this.objects.find(o => o.id === id)
+      if (!obj) return
       g.lineStyle(2 * iz, 0x6366f1, 1)
-      g.strokeCircle(h.x, h.y, hr)
-    })
+      g.strokeRect(obj.x - iz, obj.y - iz, obj.w + 2*iz, obj.h + 2*iz)
+      this.handles(obj).forEach(h => {
+        g.fillStyle(0xffffff, 1); g.fillCircle(h.x, h.y, hr)
+        g.lineStyle(2 * iz, 0x6366f1, 1); g.strokeCircle(h.x, h.y, hr)
+      })
+    } else {
+      // ── Multi-selection: individual borders + group bounding box ─────────
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+      this.selectedIds.forEach(id => {
+        const obj = this.objects.find(o => o.id === id)
+        if (!obj) return
+        g.lineStyle(1.5 * iz, 0x6366f1, 0.75)
+        g.strokeRect(obj.x - iz, obj.y - iz, obj.w + 2*iz, obj.h + 2*iz)
+        if (obj.x < minX) minX = obj.x
+        if (obj.y < minY) minY = obj.y
+        if (obj.x + obj.w > maxX) maxX = obj.x + obj.w
+        if (obj.y + obj.h > maxY) maxY = obj.y + obj.h
+      })
+      const pad = 8 * iz
+      const bx = minX - pad, by = minY - pad
+      const bw = maxX - minX + 2*pad, bh = maxY - minY + 2*pad
+      g.lineStyle(1.5 * iz, 0x6366f1, 0.45)
+      g.strokeRect(bx, by, bw, bh)
+      // Corner anchors
+      const cr = 4 * iz
+      g.fillStyle(0x6366f1, 0.7)
+      ;[[bx, by], [bx+bw, by], [bx, by+bh], [bx+bw, by+bh]].forEach(([hx, hy]) => g.fillCircle(hx, hy, cr))
+    }
   }
 
-  // ── Draw each object type ────────────────────────────────────────────────────
+  // ── Draw each object type ─────────────────────────────────────────────────────
 
   private drawObject(g: Phaser.GameObjects.Graphics, obj: MapObject) {
     const c = hexToNum(obj.color)
@@ -617,11 +811,11 @@ export class EditorScene extends Phaser.Scene {
       case "table":
         g.fillStyle(darken(c, 0.65), 1); g.fillRect(x, y, w, h)
         g.fillStyle(c, 1); g.fillRect(x+2, y+2, w-4, h-4)
-        g.fillStyle(darken(c, 0.75), 0.5); g.lineBetween(x+2, y+2, x+w-2, y+h-2); g.lineBetween(x+w-2, y+2, x+2, y+h-2)
+        g.lineStyle(1, darken(c, 0.75), 0.5)
+        g.lineBetween(x+2, y+2, x+w-2, y+h-2); g.lineBetween(x+w-2, y+2, x+2, y+h-2)
         break
 
       default: {
-        // Buildings with 3D depth
         const wallS = type==="tower" ? 18 : (type==="library"||type==="warehouse"||type==="bank") ? 14 : 10
         const wallE = Math.round(wallS * 0.6)
         const shadow = 5
@@ -631,7 +825,6 @@ export class EditorScene extends Phaser.Scene {
         g.fillStyle(darken(c, 0.72), 1); g.fillRect(x+w, y+wallE, wallE, h)
         g.fillStyle(c, 1); g.fillRect(x, y, w, h)
 
-        // Library: skylight grid
         if (type==="library" && w>=50 && h>=40) {
           const cols = Math.max(2, Math.floor(w/22)), rows = Math.max(2, Math.floor(h/18))
           const pw = (w-8)/cols, ph = (h-8)/rows
@@ -642,7 +835,6 @@ export class EditorScene extends Phaser.Scene {
           for (let ci=1; ci<cols; ci++) g.lineBetween(x+4+ci*pw, y+2, x+4+ci*pw, y+h-2)
         }
 
-        // Church: cross on roof
         if (type==="church" && w>=30 && h>=40) {
           const cx=x+w/2, cy=y+h*0.4, cw=Math.min(8,w*0.15), ch=Math.min(16,h*0.35)
           g.fillStyle(darken(c, 0.6), 1)
@@ -650,7 +842,6 @@ export class EditorScene extends Phaser.Scene {
           g.fillRect(cx-ch*0.35, cy-ch*0.22, ch*0.7, cw)
         }
 
-        // Windows
         if (type!=="library" && w>=40 && h>=36) {
           const ww=Math.max(6,w/5.5), wh=Math.max(4,h/4.5)
           const wc=Math.max(1,Math.floor((w-12)/(ww+6))), wr=Math.max(1,Math.floor((h-12)/(wh+6)))
@@ -660,7 +851,6 @@ export class EditorScene extends Phaser.Scene {
             g.fillRect(x+osx+ci*(ww+6), y+osy+ri*(wh+6), ww, wh)
         }
 
-        // Border
         g.lineStyle(1, darken(c, 0.62), 0.75)
         g.strokeRect(x, y, w, h)
         break
@@ -668,13 +858,16 @@ export class EditorScene extends Phaser.Scene {
     }
   }
 
-  // ── Events ───────────────────────────────────────────────────────────────────
+  // ── Events ────────────────────────────────────────────────────────────────────
 
   private emitObjects() {
     window.dispatchEvent(new CustomEvent("builder:objects-changed", { detail: { objects: [...this.objects] } }))
   }
 
-  private emitSelection(id: string | null, obj?: MapObject) {
-    window.dispatchEvent(new CustomEvent("builder:selection-changed", { detail: { id, obj } }))
+  private emitSelection() {
+    const ids = [...this.selectedIds]
+    const objects = ids.map(id => this.objects.find(o => o.id === id)).filter(Boolean) as MapObject[]
+    const primary = objects.length === 1 ? objects[0] : null
+    window.dispatchEvent(new CustomEvent("builder:selection-changed", { detail: { ids, objects, primary } }))
   }
 }
