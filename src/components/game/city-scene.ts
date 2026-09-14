@@ -1,15 +1,15 @@
 import Phaser from "phaser"
 
 // ── Constants ─────────────────────────────────────────────────────────────────
-const GC      = 24          // grid cols
-const GR      = 24          // grid rows
+const GC      = 48          // grid cols
+const GR      = 48          // grid rows
 const HW      = 50          // half tile width  (tile = 100 wide — matches Kenney sprites)
 const HH      = 25          // half tile height (tile = 50 tall, 2:1 ratio)
 const FH      = 18          // pixels per building floor
-const OX      = 1250        // world-space origin x for tile (0,0)
-const OY      = 160         // world-space origin y
-const WORLD_W = 2500
-const WORLD_H = 1420
+const OX      = 2500        // world-space origin x for tile (0,0)
+const OY      = 300         // world-space origin y
+const WORLD_W = 5400
+const WORLD_H = 3000
 const SPEED   = 250
 const ENT_R   = 90
 
@@ -41,37 +41,60 @@ function lk(c: number, f: number): number {
 }
 
 // ── Grid (24×24) ───────────────────────────────────────────────────────────────
-type T = 'water'|'beach'|'park'|'plaza'|'road'|'inter'|'res'|'com'|'dt'
+type T = 'water'|'beach'|'park'|'plaza'|'road'|'inter'|'res'|'com'|'dt'|'dock'|'lake'
 
-// Roads at cols 6,12,18  and rows 6,12,18
+// Roads at cols/rows 8,16,24,32,40  —  48×48 full city grid
 const RAW: string[][] = [
-//  0    1    2    3    4    5   [6]   7    8    9   10   11  [12]  13   14   15   16   17  [18]  19   20   21   22   23
-  ['W', 'W', 'W', 'W', 'B', 'K', 'R', 'K', 'K', 'K', 'K', 'K', 'R', 's', 's', 's', 's', 's', 'R', 's', 's', 's', 's', 's'], // 0
-  ['W', 'W', 'W', 'B', 'B', 'K', 'R', 'K', 'K', 'K', 'K', 'K', 'R', 'K', 's', 's', 's', 's', 'R', 's', 's', 's', 's', 's'], // 1
-  ['W', 'W', 'B', 'B', 'K', 'K', 'R', 'K', 'K', 'K', 'K', 'K', 'R', 's', 's', 's', 's', 's', 'R', 's', 's', 's', 's', 's'], // 2
-  ['W', 'B', 'B', 'K', 'K', 'K', 'R', 'K', 'K', 'K', 'K', 'K', 'R', 's', 's', 's', 's', 's', 'R', 's', 's', 's', 's', 's'], // 3
-  ['W', 'B', 'K', 'K', 'K', 'K', 'R', 'K', 'K', 'K', 'K', 's', 'R', 's', 's', 's', 's', 's', 'R', 's', 's', 's', 's', 's'], // 4
-  ['B', 'B', 'K', 'K', 'K', 'K', 'R', 'K', 'K', 'K', 's', 's', 'R', 's', 's', 's', 's', 's', 'R', 's', 's', 's', 's', 's'], // 5
-  ['R', 'R', 'R', 'R', 'R', 'R', 'X', 'R', 'R', 'R', 'R', 'R', 'X', 'R', 'R', 'R', 'R', 'R', 'X', 'R', 'R', 'R', 'R', 'R'], // 6 EW
-  ['W', 'B', 's', 's', 's', 's', 'R', 'c', 'c', 'c', 'c', 'c', 'R', 'c', 'c', 'c', 'c', 'c', 'R', 's', 's', 's', 's', 's'], // 7
-  ['W', 'B', 's', 's', 's', 's', 'R', 'c', 'c', 'c', 'c', 'c', 'R', 'c', 'c', 'c', 'c', 'c', 'R', 's', 's', 's', 's', 's'], // 8
-  ['W', 'W', 's', 's', 's', 's', 'R', 'c', 'c', 'c', 'c', 'c', 'R', 'c', 'c', 'c', 'c', 'c', 'R', 's', 's', 's', 's', 's'], // 9
-  ['W', 'W', 's', 's', 's', 's', 'R', 'c', 'c', 'c', 'c', 'c', 'R', 'c', 'c', 'c', 'c', 'c', 'R', 's', 's', 's', 's', 's'], //10
-  ['W', 'W', 'P', 'P', 's', 's', 'R', 'c', 'c', 'c', 'c', 'c', 'R', 'c', 'c', 'c', 'c', 'c', 'R', 's', 's', 's', 's', 's'], //11
-  ['R', 'R', 'R', 'R', 'R', 'R', 'X', 'R', 'R', 'R', 'R', 'R', 'X', 'R', 'R', 'R', 'R', 'R', 'X', 'R', 'R', 'R', 'R', 'R'], //12 EW
-  ['W', 'W', 'W', 'P', 's', 's', 'R', 'D', 'D', 'D', 'D', 'D', 'R', 'D', 'D', 'D', 'D', 'D', 'R', 'c', 'c', 'c', 'c', 's'], //13
-  ['W', 'W', 'W', 's', 's', 's', 'R', 'D', 'D', 'D', 'D', 'D', 'R', 'D', 'D', 'D', 'D', 'D', 'R', 'c', 'c', 'c', 'c', 's'], //14
-  ['W', 'W', 'W', 's', 's', 's', 'R', 'D', 'D', 'D', 'D', 'D', 'R', 'D', 'D', 'D', 'D', 'D', 'R', 'c', 'c', 'c', 'c', 's'], //15
-  ['W', 'W', 'W', 's', 's', 's', 'R', 'D', 'D', 'D', 'D', 'D', 'R', 'D', 'D', 'D', 'D', 'D', 'R', 'c', 'c', 'c', 'c', 's'], //16
-  ['W', 'W', 'W', 's', 's', 's', 'R', 'D', 'D', 'D', 'D', 'D', 'R', 'D', 'D', 'D', 'D', 'D', 'R', 'c', 'c', 'c', 'c', 's'], //17
-  ['R', 'R', 'R', 'R', 'R', 'R', 'X', 'R', 'R', 'R', 'R', 'R', 'X', 'R', 'R', 'R', 'R', 'R', 'X', 'R', 'R', 'R', 'R', 'R'], //18 EW
-  ['W', 'W', 'W', 'W', 'W', 'W', 'R', 's', 's', 's', 's', 's', 'R', 's', 's', 's', 's', 's', 'R', 's', 's', 's', 's', 's'], //19
-  ['W', 'W', 'W', 'W', 'W', 'W', 'R', 's', 's', 's', 's', 's', 'R', 's', 's', 's', 's', 's', 'R', 's', 's', 's', 's', 's'], //20
-  ['W', 'W', 'W', 'W', 'W', 'W', 'R', 's', 's', 's', 's', 's', 'R', 's', 's', 's', 's', 's', 'R', 's', 's', 's', 's', 's'], //21
-  ['W', 'W', 'W', 'W', 'W', 'W', 'R', 's', 's', 's', 's', 's', 'R', 's', 's', 's', 's', 's', 'R', 's', 's', 's', 's', 's'], //22
-  ['W', 'W', 'W', 'W', 'W', 'W', 'R', 's', 's', 's', 's', 's', 'R', 's', 's', 's', 's', 's', 'R', 's', 's', 's', 's', 's'], //23
+  ['W','W','W','W','W','W','W','W','R','d','d','c','c','c','c','c','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','K','K','K','K','K','K','K','R','K','K','K','K','K','K','K'], //  0
+  ['W','W','W','W','W','W','W','W','R','d','d','c','c','c','c','c','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','K','K','K','K','K','K','K','R','K','K','K','K','K','K','K'], //  1
+  ['W','W','W','W','W','W','W','W','R','d','d','c','c','c','c','c','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','K','K','K','K','K','K','K','R','K','K','K','K','K','K','K'], //  2
+  ['W','W','W','W','W','W','W','W','R','d','d','c','c','c','c','c','R','K','s','s','s','K','s','s','R','K','s','s','s','K','s','s','R','K','K','K','K','K','K','K','R','K','K','K','K','K','K','K'], //  3
+  ['W','W','W','W','W','W','W','W','R','d','d','c','c','c','c','c','R','K','s','s','s','K','s','s','R','K','s','s','s','K','s','s','R','K','K','K','K','K','K','K','R','K','K','K','K','K','K','K'], //  4
+  ['W','W','W','W','W','W','W','W','R','d','d','c','c','c','c','c','R','K','K','s','s','K','K','s','R','K','K','s','s','K','K','s','R','K','K','K','K','K','K','K','R','K','K','K','K','K','K','K'], //  5
+  ['W','W','W','W','W','W','W','W','R','d','d','c','c','c','c','c','R','K','K','s','s','K','K','s','R','K','K','s','s','K','K','s','R','K','K','K','K','K','K','K','R','K','K','K','K','K','K','K'], //  6
+  ['W','W','W','W','W','W','W','W','R','d','d','c','c','c','c','c','R','K','K','s','s','K','K','s','R','K','K','s','s','K','K','s','R','K','K','K','K','K','K','K','R','K','K','K','K','K','K','K'], //  7
+  ['R','R','R','R','R','R','R','R','X','R','R','R','R','R','R','R','X','R','R','R','R','R','R','R','X','R','R','R','R','R','R','R','X','R','R','R','R','R','R','R','X','R','R','R','R','R','R','R'], //  8 EW
+  ['W','W','W','W','W','W','W','W','R','d','d','c','c','c','c','c','R','D','D','D','D','D','D','D','R','D','D','D','D','D','D','D','R','c','c','c','c','c','c','c','R','c','c','c','c','c','c','c'], //  9
+  ['W','W','W','W','W','W','W','W','R','d','d','c','c','c','c','c','R','D','D','D','D','D','D','D','R','D','D','D','D','D','D','D','R','c','c','c','c','c','c','c','R','c','c','c','c','c','c','c'], // 10
+  ['W','W','W','W','W','W','W','W','R','d','d','c','c','c','c','c','R','D','D','D','D','D','D','D','R','D','D','D','D','D','D','D','R','c','c','c','c','c','c','c','R','c','c','c','c','c','c','c'], // 11
+  ['W','W','W','W','W','W','W','W','R','d','d','c','c','c','c','c','R','D','P','P','P','P','D','D','R','P','P','P','D','D','P','P','R','c','c','c','c','c','c','c','R','c','c','c','c','c','c','c'], // 12
+  ['W','W','W','W','W','W','W','W','R','d','d','c','c','c','c','c','R','D','P','P','P','P','D','D','R','P','P','P','D','D','P','P','R','c','c','c','c','c','c','c','R','c','c','c','c','c','c','c'], // 13
+  ['W','W','W','W','W','W','W','W','R','d','d','c','c','c','c','c','R','D','D','D','D','D','D','D','R','D','D','D','D','D','D','D','R','c','c','c','c','c','c','c','R','c','c','c','c','c','c','c'], // 14
+  ['W','W','W','W','W','W','W','W','R','d','d','c','c','c','c','c','R','D','D','D','D','D','D','D','R','D','D','D','D','D','D','D','R','c','c','c','c','c','c','c','R','c','c','c','c','c','c','c'], // 15
+  ['R','R','R','R','R','R','R','R','X','R','R','R','R','R','R','R','X','R','R','R','R','R','R','R','X','R','R','R','R','R','R','R','X','R','R','R','R','R','R','R','X','R','R','R','R','R','R','R'], // 16 EW
+  ['W','W','W','W','W','W','W','W','R','K','K','K','K','K','K','K','R','K','K','K','K','K','K','K','R','c','c','c','c','c','c','c','R','c','c','c','c','c','c','c','R','s','s','s','s','s','s','s'], // 17
+  ['W','W','W','W','W','W','W','W','R','K','K','L','L','L','K','K','R','K','K','K','K','K','K','K','R','c','c','c','c','c','c','c','R','c','c','c','c','c','c','c','R','s','s','s','s','s','s','s'], // 18
+  ['W','W','W','W','W','W','W','W','R','K','K','L','L','L','K','K','R','K','K','K','K','K','K','K','R','P','P','P','P','P','P','P','R','c','c','c','c','c','c','c','R','s','s','s','s','s','s','s'], // 19
+  ['W','W','W','W','W','W','W','W','R','K','K','L','L','L','K','K','R','K','K','K','K','K','K','K','R','P','P','P','P','P','P','P','R','c','c','c','c','c','c','c','R','s','s','s','s','s','s','s'], // 20
+  ['W','W','W','W','W','W','W','W','R','K','K','L','L','L','K','K','R','K','K','K','K','K','K','K','R','c','c','c','c','c','c','c','R','c','c','c','c','c','c','c','R','s','s','s','s','s','s','s'], // 21
+  ['W','W','W','W','W','W','W','W','R','K','K','L','L','L','K','K','R','K','K','K','K','K','K','K','R','c','c','c','c','c','c','c','R','c','c','c','c','c','c','c','R','s','s','s','s','s','s','s'], // 22
+  ['W','W','W','W','W','W','W','W','R','K','K','K','K','K','K','K','R','K','K','K','K','K','K','K','R','c','c','c','c','c','c','c','R','c','c','c','c','c','c','c','R','s','s','s','s','s','s','s'], // 23
+  ['R','R','R','R','R','R','R','R','X','R','R','R','R','R','R','R','X','R','R','R','R','R','R','R','X','R','R','R','R','R','R','R','X','R','R','R','R','R','R','R','X','R','R','R','R','R','R','R'], // 24 EW
+  ['W','W','W','W','W','W','W','W','R','K','K','s','s','s','K','K','R','s','s','K','K','s','s','s','R','c','c','c','c','c','c','c','R','c','c','c','c','c','c','c','R','s','s','s','s','s','s','s'], // 25
+  ['W','W','W','W','W','W','W','W','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','c','c','c','c','c','c','c','R','c','c','c','c','c','c','c','R','s','s','s','s','s','s','s'], // 26
+  ['W','W','W','W','W','W','W','W','R','s','s','s','K','s','s','s','R','K','s','s','s','s','K','s','R','c','c','c','c','c','c','c','R','c','c','c','c','c','c','c','R','s','s','s','s','s','s','s'], // 27
+  ['W','W','W','W','W','W','W','W','R','K','K','s','s','s','K','K','R','s','s','K','K','s','s','s','R','c','c','c','c','c','c','c','R','c','c','c','c','c','c','c','R','s','s','s','s','s','s','s'], // 28
+  ['W','W','W','W','W','W','W','W','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','c','c','c','c','c','c','c','R','c','c','c','c','c','c','c','R','s','s','s','s','s','s','s'], // 29
+  ['W','W','W','W','W','W','W','W','R','s','s','s','K','s','s','s','R','K','s','s','s','s','K','s','R','c','c','c','c','c','c','c','R','c','c','c','c','c','c','c','R','s','s','s','s','s','s','s'], // 30
+  ['W','W','W','W','W','W','W','W','R','K','K','s','s','s','K','K','R','s','s','K','K','s','s','s','R','c','c','c','c','c','c','c','R','c','c','c','c','c','c','c','R','s','s','s','s','s','s','s'], // 31
+  ['R','R','R','R','R','R','R','R','X','R','R','R','R','R','R','R','X','R','R','R','R','R','R','R','X','R','R','R','R','R','R','R','X','R','R','R','R','R','R','R','X','R','R','R','R','R','R','R'], // 32 EW
+  ['B','B','B','B','B','B','B','B','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s'], // 33
+  ['B','B','B','B','B','B','B','B','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s'], // 34
+  ['B','B','B','B','B','B','B','B','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s'], // 35
+  ['B','B','B','B','B','B','B','B','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s'], // 36
+  ['B','B','B','B','B','B','B','B','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s'], // 37
+  ['B','B','B','B','B','B','B','B','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s'], // 38
+  ['B','B','B','B','B','B','B','B','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s'], // 39
+  ['R','R','R','R','R','R','R','R','X','R','R','R','R','R','R','R','X','R','R','R','R','R','R','R','X','R','R','R','R','R','R','R','X','R','R','R','R','R','R','R','X','R','R','R','R','R','R','R'], // 40 EW
+  ['B','B','B','B','B','B','B','B','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s'], // 41
+  ['B','B','B','B','B','B','B','B','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s'], // 42
+  ['B','B','B','B','B','B','B','B','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s'], // 43
+  ['B','B','B','B','B','B','B','B','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s'], // 44
+  ['B','B','B','B','B','B','B','B','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s'], // 45
+  ['B','B','B','B','B','B','B','B','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s'], // 46
+  ['B','B','B','B','B','B','B','B','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s'], // 47
 ]
-const KEY: Record<string, T> = { W:'water',B:'beach',K:'park',P:'plaza',R:'road',X:'inter',s:'res',c:'com',D:'dt' }
+const KEY: Record<string, T> = { W:'water',B:'beach',K:'park',P:'plaza',R:'road',X:'inter',s:'res',c:'com',D:'dt',d:'dock',L:'lake' }
 const GRID: T[][] = RAW.map(r => r.map(c => KEY[c]))
 
 // Walk everywhere except water
@@ -87,17 +110,63 @@ function canOccupy(sx: number, sy: number): boolean {
 }
 
 // ── Named buildings ────────────────────────────────────────────────────────────
-interface Bldg { id:string; name:string; col:number; row:number; color:number; available:boolean; href:string; floors:number }
+interface Bldg { id:string; name:string; col:number; row:number; color:number; available:boolean; href:string; floors:number; kind?:string; seats?:number }
 const BUILDINGS: Bldg[] = [
-  { id:'bank',       name:'First Realm Bank',  col: 8, row:13, floors:4, color:0x10b981, available:true,  href:'/buildings/bank'       },
-  { id:'library',    name:'City Library',       col:14, row: 2, floors:3, color:0x3b82f6, available:true,  href:'/buildings/library'    },
-  { id:'gym',        name:'Iron District Gym',  col: 3, row: 8, floors:2, color:0xf97316, available:false, href:'/buildings/gym'        },
-  { id:'hospital',   name:'Realm Medical',      col:15, row: 9, floors:3, color:0xef4444, available:false, href:'/buildings/hospital'   },
-  { id:'university', name:'Realm University',   col:20, row: 2, floors:3, color:0x8b5cf6, available:false, href:'/buildings/university' },
-  { id:'mall',       name:'The Mall',           col:20, row:14, floors:2, color:0xec4899, available:false, href:'/buildings/mall'       },
-  { id:'government', name:'City Hall',          col: 8, row:16, floors:5, color:0x64748b, available:false, href:'/buildings/government' },
-  { id:'home',       name:'Your Home',          col:21, row: 1, floors:2, color:0xf59e0b, available:false, href:'/buildings/home'       },
-  { id:'office',     name:'Office Tower',       col: 9, row:14, floors:8, color:0x0891b2, available:false, href:'/buildings/office'     },
+  // ── Financial District (cols 17-31, rows 9-15) ──────────────────────────
+  { id:'bank',    name:'First Realm Bank',    col:19, row:11, floors:6,  color:0x10b981, available:true,  href:'/buildings/bank'    },
+  { id:'office',  name:'Realm Tower',         col:22, row:10, floors:11, color:0x0891b2, available:false, href:'/buildings/office'  },
+  { id:'office2', name:'Exchange Building',   col:27, row:10, floors:8,  color:0x3730a3, available:false, href:'/buildings/office'  },
+  { id:'office3', name:'Financial HQ',        col:29, row:14, floors:12, color:0x1d4ed8, available:false, href:'/buildings/office'  },
+  { id:'office4', name:'Commerce Plaza',      col:20, row:15, floors:7,  color:0x0f766e, available:false, href:'/buildings/office'  },
+  // Financial outdoor tables (spatial audio zones)
+  { id:'fin_t1',  name:'Plaza Café ☕',        col:19, row:12, floors:0, color:0xf59e0b, available:false, href:'/zone/plaza-1', kind:'table', seats:8 },
+  { id:'fin_t2',  name:'Terrace Lounge',      col:21, row:13, floors:0, color:0xf59e0b, available:false, href:'/zone/plaza-2', kind:'table', seats:8 },
+  { id:'fin_t3',  name:'Garden Seating',      col:25, row:12, floors:0, color:0xf59e0b, available:false, href:'/zone/plaza-3', kind:'table', seats:8 },
+  { id:'fin_t4',  name:'Sky Deck Table',      col:27, row:13, floors:0, color:0xf59e0b, available:false, href:'/zone/plaza-4', kind:'table', seats:8 },
+  { id:'fin_t5',  name:'Courtyard Table',     col:30, row:12, floors:0, color:0xf59e0b, available:false, href:'/zone/plaza-5', kind:'table', seats:8 },
+  // ── Marina / Docks (cols 9-15, rows 0-15) ───────────────────────────────
+  { id:'marina',  name:'Realm Marina',        col:12, row: 5, floors:2, color:0x0ea5e9, available:false, href:'/buildings/marina'  },
+  { id:'yacht_club', name:'Yacht Club',       col:13, row:11, floors:2, color:0x0369a1, available:false, href:'/buildings/marina'  },
+  // Boats (on water tiles, col 0-7)
+  { id:'boat1',   name:'The Pelican',         col: 4, row: 2, floors:0, color:0xf97316, available:false, href:'/zone/boat-1', kind:'boat', seats:50 },
+  { id:'boat2',   name:'The Albatross',       col: 3, row: 5, floors:0, color:0xec4899, available:false, href:'/zone/boat-2', kind:'boat', seats:50 },
+  { id:'boat3',   name:'Marina Star',         col: 5, row:11, floors:0, color:0x8b5cf6, available:false, href:'/zone/boat-3', kind:'boat', seats:50 },
+  { id:'boat4',   name:'The Compass',         col: 2, row:14, floors:0, color:0x10b981, available:false, href:'/zone/boat-4', kind:'boat', seats:50 },
+  // ── Hospital (cols 33-39, rows 9-15) ────────────────────────────────────
+  { id:'hospital',  name:'Realm Medical Ctr', col:36, row:11, floors:5, color:0xef4444, available:false, href:'/buildings/hospital'  },
+  { id:'hosp_conf', name:'Medical Conf. Hall', col:35, row:13, floors:2, color:0xfca5a5, available:false, href:'/buildings/hospital'  },
+  // ── Libraries ────────────────────────────────────────────────────────────
+  { id:'library',   name:'City Library',      col:43, row:11, floors:3, color:0x3b82f6, available:true,  href:'/buildings/library'   },
+  { id:'library2',  name:'South Branch Lib.', col:36, row:19, floors:2, color:0x6366f1, available:false, href:'/buildings/library'   },
+  // ── Park with Lake (cols 9-23, rows 17-23) ──────────────────────────────
+  // Benches around the lake (block 1: cols 9-15) — 8-person spatial zones
+  { id:'bench1', name:'Lakeside Bench A', col: 9, row:18, floors:0, color:0x84cc16, available:false, href:'/zone/bench-1', kind:'bench', seats:8 },
+  { id:'bench2', name:'Lakeside Bench B', col: 9, row:21, floors:0, color:0x84cc16, available:false, href:'/zone/bench-2', kind:'bench', seats:8 },
+  { id:'bench3', name:'Lakeside Bench C', col:14, row:18, floors:0, color:0x84cc16, available:false, href:'/zone/bench-3', kind:'bench', seats:8 },
+  { id:'bench4', name:'Lakeside Bench D', col:14, row:21, floors:0, color:0x84cc16, available:false, href:'/zone/bench-4', kind:'bench', seats:8 },
+  // Meadow tables (block 2: cols 17-23) — separated so zones don't overlap
+  { id:'bench5', name:'Meadow Table A',   col:17, row:18, floors:0, color:0x84cc16, available:false, href:'/zone/bench-5', kind:'bench', seats:8 },
+  { id:'bench6', name:'Meadow Table B',   col:20, row:19, floors:0, color:0x84cc16, available:false, href:'/zone/bench-6', kind:'bench', seats:8 },
+  { id:'bench7', name:'Meadow Table C',   col:23, row:18, floors:0, color:0x84cc16, available:false, href:'/zone/bench-7', kind:'bench', seats:8 },
+  { id:'bench8', name:'Meadow Table D',   col:18, row:22, floors:0, color:0x84cc16, available:false, href:'/zone/bench-8', kind:'bench', seats:8 },
+  { id:'bench9', name:'Meadow Table E',   col:21, row:22, floors:0, color:0x84cc16, available:false, href:'/zone/bench-9', kind:'bench', seats:8 },
+  // ── Ranch Houses ─────────────────────────────────────────────────────────
+  { id:'home',    name:'Your Home',           col:20, row: 3, floors:2, color:0xf59e0b, available:false, href:'/buildings/home'     },
+  { id:'ranch1',  name:'Oak Ranch',           col:25, row: 4, floors:1, color:0xd97706, available:false, href:'/buildings/home'     },
+  { id:'ranch2',  name:'Sunset Ranch',        col:28, row: 2, floors:1, color:0xb45309, available:false, href:'/buildings/home'     },
+  { id:'ranch3',  name:'Cedar House',         col:11, row:26, floors:1, color:0x92400e, available:false, href:'/buildings/home'     },
+  { id:'ranch4',  name:'Meadow House',        col:18, row:28, floors:1, color:0xa16207, available:false, href:'/buildings/home'     },
+  { id:'ranch5',  name:'Creekside Home',      col:21, row:25, floors:2, color:0xca8a04, available:false, href:'/buildings/home'     },
+  // Ranch outdoor hangout tables
+  { id:'ranch_t1', name:'Ranch Patio',        col:22, row: 4, floors:0, color:0xfbbf24, available:false, href:'/zone/ranch-1', kind:'table', seats:8 },
+  { id:'ranch_t2', name:'Garden Hangout',     col:13, row:27, floors:0, color:0xfbbf24, available:false, href:'/zone/ranch-2', kind:'table', seats:8 },
+  // ── University ──────────────────────────────────────────────────────────
+  { id:'university', name:'Realm University', col:44, row:20, floors:4, color:0x8b5cf6, available:false, href:'/buildings/university' },
+  // ── Mall ────────────────────────────────────────────────────────────────
+  { id:'mall',       name:'The Mall',         col:28, row:27, floors:3, color:0xec4899, available:false, href:'/buildings/mall'      },
+  // ── Government ──────────────────────────────────────────────────────────
+  { id:'government', name:'City Hall',        col:36, row:27, floors:5, color:0x64748b, available:false, href:'/buildings/government'},
+  { id:'gym',        name:'Iron District Gym',col:43, row:27, floors:2, color:0xf97316, available:false, href:'/buildings/gym'       },
 ]
 const BMAP = new Map(BUILDINGS.map(b => [`${b.col},${b.row}`, b]))
 
@@ -274,9 +343,8 @@ export class CityScene extends Phaser.Scene {
       case 'park':  key = 'tile-grass'; break
       case 'plaza': key = 'tile-lot';   break
       case 'road': {
-        // col=6/12/18 roads run SW in screen → EW sprite
-        // row=6/12/18 roads run SE in screen → NS sprite
-        const isColRoad = col === 6 || col === 12 || col === 18
+        // col=8/16/24/32/40 run SW → EW sprite; row roads run SE → NS sprite
+        const isColRoad = col === 8 || col === 16 || col === 24 || col === 32 || col === 40
         key = isColRoad ? 'tile-road-ew' : 'tile-road-ns'
         break
       }
@@ -284,6 +352,8 @@ export class CityScene extends Phaser.Scene {
       case 'res':   key = 'tile-grass'; break
       case 'com':   key = 'tile-grass'; break
       case 'dt':    key = 'tile-road';  break
+      case 'dock':  key = 'tile-dirt';  break
+      case 'lake':  key = 'tile-water'; break
       default:      key = 'tile-grass'
     }
     this.add.image(sx, sy - HH, key).setOrigin(0.5, 0).setDepth(depth)
@@ -316,15 +386,15 @@ export class CityScene extends Phaser.Scene {
       return
     }
 
-    // Street lamps on NS roads every 3rd tile (lamp on SE side)
-    if (type === 'road') {
-      const nsRoad = col === 6 || col === 12 || col === 18
-      if (nsRoad && row % 3 === 1) {
-        // SE side of NS road = offset toward +col direction
-        streetLamp(gW, sx + HW * 0.55, sy + HH * 0.3)
-      } else if (!nsRoad && col % 3 === 1) {
-        // Upper side of EW road = offset toward -row direction
-        streetLamp(gW, sx - HW * 0.15, sy - HH * 0.7)
+    // Street lamps every 3rd tile along roads
+    if (type === 'road' || type === 'dock') {
+      if (type === 'road') {
+        const nsRoad = col === 8 || col === 16 || col === 24 || col === 32 || col === 40
+        if (nsRoad && row % 3 === 1) {
+          streetLamp(gW, sx + HW * 0.55, sy + HH * 0.3)
+        } else if (!nsRoad && col % 3 === 1) {
+          streetLamp(gW, sx - HW * 0.15, sy - HH * 0.7)
+        }
       }
       return
     }
@@ -359,11 +429,106 @@ export class CityScene extends Phaser.Scene {
     gB.lineBetween(sx, sy - HH - H, sx + HW, sy - H)
   }
 
+  // ── Bench (8-person spatial audio zone) ───────────────────────────────────
+  private drawBench(gB: Phaser.GameObjects.Graphics, sx: number, sy: number, b: Bldg) {
+    const dep = (b.col + b.row) * 4 + 2
+    // Soft zone ring
+    gB.lineStyle(1.5, b.color, 0.28)
+    gB.strokeEllipse(sx, sy + HH * 0.4, HW * 1.2, HH * 1.2)
+    // Shadow
+    gB.fillStyle(0x000000, 0.15)
+    gB.fillEllipse(sx + 3, sy + 8, 30, 10)
+    // Bench seat
+    gB.fillStyle(0x8B5E3C)
+    gB.fillPoints(fp([{ x:sx-13, y:sy-2 }, { x:sx+14, y:sy-7 }, { x:sx+14, y:sy-3 }, { x:sx-13, y:sy+2 }]), true)
+    // Bench back
+    gB.fillPoints(fp([{ x:sx-13, y:sy-8 }, { x:sx+14, y:sy-13 }, { x:sx+14, y:sy-10 }, { x:sx-13, y:sy-5 }]), true)
+    // Legs
+    gB.fillStyle(0x6b3d1e)
+    gB.fillRect(sx - 11, sy + 2, 3, 5)
+    gB.fillRect(sx + 10, sy - 3, 3, 5)
+    // Seat-count dots
+    gB.fillStyle(0xffffff, 0.35)
+    for (let i = 0; i < 4; i++) gB.fillCircle(sx - 9 + i * 7, sy - 14, 1.8)
+    for (let i = 0; i < 4; i++) gB.fillCircle(sx - 9 + i * 7, sy - 5, 1.8)
+    this.add.text(sx, sy - 18, b.name, {
+      fontSize: '6px', color: `#${b.color.toString(16).padStart(6,'0')}`,
+      backgroundColor: '#00000099', padding: { x:3, y:1 },
+    }).setOrigin(0.5, 1).setDepth(dep)
+  }
+
+  // ── Boat (50-person zone floating on water) ───────────────────────────────
+  private drawBoat(gB: Phaser.GameObjects.Graphics, sx: number, sy: number, b: Bldg) {
+    const dep = (b.col + b.row) * 4 + 2
+    // Water ripple
+    gB.lineStyle(1, 0x4fc3f7, 0.25)
+    gB.strokeEllipse(sx, sy + 8, HW * 2.0, HH * 1.2)
+    // Hull (dark) – iso parallelogram
+    gB.fillStyle(dk(b.color, 0.45))
+    gB.fillPoints(fp([
+      { x:sx-HW*0.80, y:sy+HH*0.20 }, { x:sx+HW*0.80, y:sy-HH*0.20 },
+      { x:sx+HW*0.65, y:sy+HH*0.65 }, { x:sx-HW*0.65, y:sy+HH*0.65 },
+    ]), true)
+    // Deck (lighter)
+    gB.fillStyle(lk(b.color, 0.75))
+    gB.fillPoints(fp([
+      { x:sx, y:sy-HH*0.90 }, { x:sx+HW*0.80, y:sy-HH*0.20 },
+      { x:sx, y:sy+HH*0.40 }, { x:sx-HW*0.80, y:sy-HH*0.20 },
+    ]), true)
+    // Cabin
+    gB.fillStyle(lk(b.color, 0.55))
+    gB.fillRect(sx - 11, sy - 28, 22, 14)
+    gB.lineStyle(0.5, 0xffffff, 0.25)
+    gB.strokeRect(sx - 11, sy - 28, 22, 14)
+    // Mast
+    gB.fillStyle(0x8B4513)
+    gB.fillRect(sx - 1, sy - 54, 2, 27)
+    // Flag
+    gB.fillStyle(b.color, 0.9)
+    gB.fillTriangle(sx + 1, sy - 54, sx + 13, sy - 47, sx + 1, sy - 40)
+    this.add.text(sx, sy - 60, `⚓ ${b.name}`, {
+      fontSize: '7px', color: '#ffffff', fontStyle: 'bold',
+      backgroundColor: '#00000099', padding: { x:4, y:2 }, align: 'center',
+    }).setOrigin(0.5, 1).setDepth(dep)
+  }
+
+  // ── Outdoor table (8-person plaza zone) ───────────────────────────────────
+  private drawTable(gB: Phaser.GameObjects.Graphics, sx: number, sy: number, b: Bldg) {
+    const dep = (b.col + b.row) * 4 + 2
+    // Zone shadow
+    gB.fillStyle(0x000000, 0.12)
+    gB.fillEllipse(sx + 3, sy + 5, 34, 14)
+    // Zone ring
+    gB.lineStyle(1, b.color, 0.28)
+    gB.strokeEllipse(sx, sy, HW * 0.9, HH * 0.9)
+    // Table top
+    gB.fillStyle(0xdeb887, 0.9)
+    gB.fillEllipse(sx, sy - 7, 18, 9)
+    gB.fillStyle(0x8B6914, 0.7)
+    gB.fillEllipse(sx + 1, sy - 5, 18, 9)
+    // Chairs (8 evenly around table)
+    gB.fillStyle(0xb5835a)
+    const chairR = 14, chairH = 6
+    for (let i = 0; i < 8; i++) {
+      const ang = (i / 8) * Math.PI * 2
+      gB.fillRect(sx + Math.cos(ang) * chairR - 2, sy + Math.sin(ang) * chairH - 2 - 6, 4, 4)
+    }
+    this.add.text(sx, sy - 16, b.name, {
+      fontSize: '6px', color: `#${b.color.toString(16).padStart(6,'0')}`,
+      backgroundColor: '#00000088', padding: { x:3, y:1 },
+    }).setOrigin(0.5, 1).setDepth(dep)
+  }
+
   // ── Named building ─────────────────────────────────────────────────────────
   private drawNamedBuilding(
     gB: Phaser.GameObjects.Graphics, gW: Phaser.GameObjects.Graphics,
     sx: number, sy: number, b: Bldg
   ) {
+    // Dispatch special kinds
+    if (b.kind === 'bench') { this.drawBench(gB, sx, sy, b); return }
+    if (b.kind === 'boat')  { this.drawBoat(gB, sx, sy, b); return }
+    if (b.kind === 'table') { this.drawTable(gB, sx, sy, b); return }
+
     const H = b.floors * FH
     const topCol   = b.available ? lk(b.color, 0.55) : 0x2a3040
     const rightCol = dk(topCol, 0.55)
@@ -426,18 +591,24 @@ export class CityScene extends Phaser.Scene {
   // ── Neighbourhood labels ──────────────────────────────────────────────────
   private addNeighbourhoodLabels() {
     const L = [
-      { t:'DOWNTOWN',      col: 9, row:14 },
-      { t:'BALBOA PARK',   col: 9, row: 2 },
-      { t:'PACIFIC BEACH', col: 1, row: 8 },
-      { t:'HILLCREST',     col: 9, row: 8 },
-      { t:'LA JOLLA',      col:14, row: 1 },
-      { t:'UTC',           col:20, row: 8 },
-      { t:'NORTH PARK',    col:20, row:14 },
+      { t:'FINANCIAL DISTRICT', col:23, row:11 },
+      { t:'MARINA & DOCKS',     col:11, row: 7 },
+      { t:'CENTRAL PARK',       col:13, row:20 },
+      { t:'PARK MEADOW',        col:19, row:20 },
+      { t:'HOSPITAL ROW',       col:36, row:12 },
+      { t:'LIBRARY DISTRICT',   col:43, row:12 },
+      { t:'RANCH ESTATES NORTH',col:23, row: 3 },
+      { t:'RANCH ESTATES SOUTH',col:14, row:28 },
+      { t:'THE MALL',           col:27, row:28 },
+      { t:'CITY GOVERNMENT',    col:36, row:28 },
+      { t:'UNIVERSITY QUARTER', col:44, row:21 },
+      { t:'PACIFIC OCEAN',      col: 3, row:14 },
+      { t:'NORTH BEACH',        col: 3, row:36 },
     ]
     for (const l of L) {
       const { sx, sy } = ts(l.col, l.row)
       this.add.text(sx, sy - HH, l.t, {
-        fontSize: '9px', color: '#ffffff22', fontStyle: 'bold', letterSpacing: 3,
+        fontSize: '8px', color: '#ffffff1a', fontStyle: 'bold', letterSpacing: 3,
       }).setOrigin(0.5).setDepth((l.col + l.row) * 4 + 0.5)
     }
   }
@@ -453,7 +624,7 @@ export class CityScene extends Phaser.Scene {
       backgroundColor: '#000000aa', padding: { x:4, y:2 },
     }).setOrigin(0.5, 1)
 
-    const spawn = ts(8, 12)   // on EW road near downtown
+    const spawn = ts(21, 12)  // financial district
     this.playerSx = spawn.sx
     this.playerSy = spawn.sy
     this.playerContainer = this.add.container(this.playerSx, this.playerSy, [this.shadowGfx, this.playerGfx, nameLabel])
@@ -537,7 +708,7 @@ export class CityScene extends Phaser.Scene {
   // ── Camera ────────────────────────────────────────────────────────────────
   private setupCamera() {
     this.cameras.main.setBounds(0, 0, WORLD_W, WORLD_H)
-    this.cameras.main.setZoom(0.9)
+    this.cameras.main.setZoom(0.7)
     this.cameras.main.startFollow(this.playerContainer, true, 0.09, 0.09)
   }
 

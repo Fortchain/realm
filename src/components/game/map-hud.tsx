@@ -5,12 +5,12 @@ import { motion, AnimatePresence } from "framer-motion"
 import { X, Plus, Minus, Locate, MapPin } from "lucide-react"
 
 // ── Iso grid constants (mirrors city-scene.ts) ────────────────────────────────
-const GC   = 24
-const GR   = 24
+const GC   = 48
+const GR   = 48
 const HW   = 50
 const HH   = 25
-const OX   = 1250
-const OY   = 160
+const OX   = 2500
+const OY   = 300
 
 // Convert player screen-space position to fractional tile coords
 function screenToTile(sx: number, sy: number) {
@@ -24,64 +24,94 @@ function tileToScreen(col: number, row: number) {
 }
 
 // ── Grid (top-down logical, mirrors city-scene.ts) ────────────────────────────
-type Cell = 'water' | 'beach' | 'park' | 'plaza' | 'road' | 'inter' | 'res' | 'com' | 'dt'
+type Cell = 'water' | 'beach' | 'park' | 'plaza' | 'road' | 'inter' | 'res' | 'com' | 'dt' | 'dock' | 'lake'
 
-const RAW: string[][] = [
-  ['W','W','W','W','B','K','R','K','K','K','K','K','R','s','s','s','s','s','R','s','s','s','s','s'],
-  ['W','W','W','B','B','K','R','K','K','K','K','K','R','K','s','s','s','s','R','s','s','s','s','s'],
-  ['W','W','B','B','K','K','R','K','K','K','K','K','R','s','s','s','s','s','R','s','s','s','s','s'],
-  ['W','B','B','K','K','K','R','K','K','K','K','K','R','s','s','s','s','s','R','s','s','s','s','s'],
-  ['W','B','K','K','K','K','R','K','K','K','K','s','R','s','s','s','s','s','R','s','s','s','s','s'],
-  ['B','B','K','K','K','K','R','K','K','K','s','s','R','s','s','s','s','s','R','s','s','s','s','s'],
-  ['R','R','R','R','R','R','X','R','R','R','R','R','X','R','R','R','R','R','X','R','R','R','R','R'],
-  ['W','B','s','s','s','s','R','c','c','c','c','c','R','c','c','c','c','c','R','s','s','s','s','s'],
-  ['W','B','s','s','s','s','R','c','c','c','c','c','R','c','c','c','c','c','R','s','s','s','s','s'],
-  ['W','W','s','s','s','s','R','c','c','c','c','c','R','c','c','c','c','c','R','s','s','s','s','s'],
-  ['W','W','s','s','s','s','R','c','c','c','c','c','R','c','c','c','c','c','R','s','s','s','s','s'],
-  ['W','W','P','P','s','s','R','c','c','c','c','c','R','c','c','c','c','c','R','s','s','s','s','s'],
-  ['R','R','R','R','R','R','X','R','R','R','R','R','X','R','R','R','R','R','X','R','R','R','R','R'],
-  ['W','W','W','P','s','s','R','D','D','D','D','D','R','D','D','D','D','D','R','c','c','c','c','s'],
-  ['W','W','W','s','s','s','R','D','D','D','D','D','R','D','D','D','D','D','R','c','c','c','c','s'],
-  ['W','W','W','s','s','s','R','D','D','D','D','D','R','D','D','D','D','D','R','c','c','c','c','s'],
-  ['W','W','W','s','s','s','R','D','D','D','D','D','R','D','D','D','D','D','R','c','c','c','c','s'],
-  ['W','W','W','s','s','s','R','D','D','D','D','D','R','D','D','D','D','D','R','c','c','c','c','s'],
-  ['R','R','R','R','R','R','X','R','R','R','R','R','X','R','R','R','R','R','X','R','R','R','R','R'],
-  ['W','W','W','W','W','W','R','s','s','s','s','s','R','s','s','s','s','s','R','s','s','s','s','s'],
-  ['W','W','W','W','W','W','R','s','s','s','s','s','R','s','s','s','s','s','R','s','s','s','s','s'],
-  ['W','W','W','W','W','W','R','s','s','s','s','s','R','s','s','s','s','s','R','s','s','s','s','s'],
-  ['W','W','W','W','W','W','R','s','s','s','s','s','R','s','s','s','s','s','R','s','s','s','s','s'],
-  ['W','W','W','W','W','W','R','s','s','s','s','s','R','s','s','s','s','s','R','s','s','s','s','s'],
-]
-const KEY: Record<string, Cell> = { W:'water',B:'beach',K:'park',P:'plaza',R:'road',X:'inter',s:'res',c:'com',D:'dt' }
-const GRID: Cell[][] = RAW.map(r => r.map(c => KEY[c]))
+const RAW_STR = `
+WWWWWWWWRdddddddRsssKsssRsssssssRKKKKKKKRKKKKKKK
+WWWWWWWWRdddddddRssKKKssRsssssssRKKKKKKKRKKKKKKK
+WWWWWWWWRdddddddRsssKsssRssKssssRKKKKKKKRKKKKKKK
+WWWWWWWWRdddddddRsssssssRsKKKsssRKKKKKKKRKKKKKKK
+WWWWWWWWRdddddddRsssssssRssKssssRKKKKKKKRKKKKKKK
+WWWWWWWWRdddddddRsssssssRsssssssRKKKKKKKRKKKKKKK
+WWWWWWWWRdddddddRsssssssRsssssssRKKKKKKKRKKKKKKK
+WWWWWWWWRdddddddRsssssssRsssssssRKKKKKKKRKKKKKKK
+RRRRRRRRXRRRRRRRXRRRRRRRXRRRRRRRXRRRRRRRXRRRRRRR
+WWWWWWWWRcccccccRDDDDDDDRDDDDDDDRcccccccRccccccc
+WWWWWWWWRcccccccRDDDDDDDRDDDDDDDRcccccccRccccccc
+WWWWWWWWRcccccccRDDDDDDDRDDDDDDDRcccccccRccccccc
+WWWWWWWWRcccccccRDDDDDDDRDDDDDDDRcccccccRccccccc
+WWWWWWWWRcccccccRDDDDDDDRDDPDDDDRcccccccRccccccc
+WWWWWWWWRcccccccRDDDDPDDRDPPPDDDRcccccccRccccccc
+WWWWWWWWRcccccccRDDPPPDDRDDPPDDDRcccccccRccccccc
+RRRRRRRRXRRRRRRRXRRRRRRRXRRRRRRRXRRRRRRRXRRRRRRR
+WWWWWWWWRKKKKKKKRKKKKKKKRcccccccRcccccccRsssssss
+WWWWWWWWRKKLLLKKRKKKKKKKRcccccccRcccccccRsssssss
+WWWWWWWWRKKLLLKKRKKKKKKKRPPPPPPPRcccccccRsssssss
+WWWWWWWWRKKLLLKKRKKKKKKKRPPPPPPPRcccccccRsssssss
+WWWWWWWWRKKLLLKKRKKKKKKKRcccccccRcccccccRsssssss
+WWWWWWWWRKKLLLKKRKKKKKKKRcccccccRcccccccRsssssss
+WWWWWWWWRKKKKKKKRKKKKKKKRcccccccRcccccccRsssssss
+RRRRRRRRXRRRRRRRXRRRRRRRXRRRRRRRXRRRRRRRXRRRRRRR
+WWWWWWWWRsssssssRssKssssRcccccccRcccccccRsssssss
+WWWWWWWWRsssssssRsKKKsssRcccccccRcccccccRsssssss
+WWWWWWWWRssKssssRssKssssRcccccccRcccccccRsssssss
+WWWWWWWWRsKKKsssRsssssssRcccccccRcccccccRsssssss
+WWWWWWWWRssKssssRsssssssRcccccccRcccccccRsssssss
+WWWWWWWWRsssssssRsssssssRcccccccRcccccccRsssssss
+WWWWWWWWRsssssssRsssssssRcccccccRcccccccRsssssss
+RRRRRRRRXRRRRRRRXRRRRRRRXRRRRRRRXRRRRRRRXRRRRRRR
+BBBBBBBBRsssssssRsssssssRsssssssRsssssssRsssssss
+BBBBBBBBRsssssssRsssssssRsssssssRsssssssRsssssss
+BBBBBBBBRsssssssRsssssssRsssssssRsssssssRsssssss
+BBBBBBBBRsssssssRsssssssRsssssssRsssssssRsssssss
+BBBBBBBBRsssssssRsssssssRsssssssRsssssssRsssssss
+BBBBBBBBRsssssssRsssssssRsssssssRsssssssRsssssss
+BBBBBBBBRsssssssRsssssssRsssssssRsssssssRsssssss
+RRRRRRRRXRRRRRRRXRRRRRRRXRRRRRRRXRRRRRRRXRRRRRRR
+BBBBBBBBRsssssssRsssssssRsssssssRsssssssRsssssss
+BBBBBBBBRsssssssRsssssssRsssssssRsssssssRsssssss
+BBBBBBBBRsssssssRsssssssRsssssssRsssssssRsssssss
+BBBBBBBBRsssssssRsssssssRsssssssRsssssssRsssssss
+BBBBBBBBRsssssssRsssssssRsssssssRsssssssRsssssss
+BBBBBBBBRsssssssRsssssssRsssssssRsssssssRsssssss
+BBBBBBBBRsssssssRsssssssRsssssssRsssssssRsssssss
+`.trim()
+const KEY: Record<string, Cell> = {
+  W:'water', B:'beach', K:'park', P:'plaza', R:'road', X:'inter',
+  s:'res', c:'com', D:'dt', d:'dock', L:'lake',
+}
+const GRID: Cell[][] = RAW_STR.split('\n').map(row => row.split('').map(c => KEY[c] ?? 'res'))
 
 const CELL_COLOR: Record<Cell, string> = {
   water: '#0d3a6e', beach: '#b89830', park: '#1a4e1a', plaza: '#505068',
   road: '#1a1a28', inter: '#141420', res: '#383028', com: '#283038', dt: '#182030',
+  dock: '#1a3050', lake: '#0d4a8e',
 }
 
 // ── Building markers (tile positions) ─────────────────────────────────────────
 const MARKERS = [
-  { id:'bank',       name:'First Realm Bank',  col: 8, row:13, color:'#10b981', icon:'🏦', available:true  },
-  { id:'library',    name:'City Library',       col:14, row: 2, color:'#3b82f6', icon:'📚', available:true  },
-  { id:'gym',        name:'Iron District Gym',  col: 3, row: 8, color:'#f97316', icon:'🏋️', available:false },
-  { id:'hospital',   name:'Realm Medical',      col:15, row: 9, color:'#ef4444', icon:'🏥', available:false },
-  { id:'university', name:'Realm University',   col:20, row: 2, color:'#8b5cf6', icon:'🎓', available:false },
-  { id:'mall',       name:'The Mall',           col:20, row:14, color:'#ec4899', icon:'🛍️', available:false },
-  { id:'government', name:'City Hall',          col: 8, row:16, color:'#64748b', icon:'🏛️', available:false },
-  { id:'home',       name:'Your Home',          col:21, row: 1, color:'#f59e0b', icon:'🏠', available:false },
-  { id:'office',     name:'Office Tower',       col: 9, row:14, color:'#0891b2', icon:'💼', available:false },
+  { id:'bank',       name:'First Realm Bank',  col:19, row:11, color:'#10b981', icon:'🏦', available:true  },
+  { id:'library',    name:'City Library',       col:43, row:11, color:'#3b82f6', icon:'📚', available:true  },
+  { id:'gym',        name:'Iron District Gym',  col:43, row:27, color:'#f97316', icon:'🏋️', available:false },
+  { id:'hospital',   name:'Realm Medical',      col:36, row:11, color:'#ef4444', icon:'🏥', available:false },
+  { id:'university', name:'Realm University',   col:44, row:20, color:'#8b5cf6', icon:'🎓', available:false },
+  { id:'mall',       name:'The Mall',           col:28, row:27, color:'#ec4899', icon:'🛍️', available:false },
+  { id:'government', name:'City Hall',          col:36, row:27, color:'#64748b', icon:'🏛️', available:false },
+  { id:'home',       name:'Your Home',          col:20, row: 3, color:'#f59e0b', icon:'🏠', available:false },
+  { id:'office',     name:'Office Tower',       col:22, row:10, color:'#0891b2', icon:'💼', available:false },
+  { id:'library2',   name:'Library District',   col:36, row:19, color:'#6366f1', icon:'📖', available:false },
+  { id:'marina',     name:'Marina',             col:12, row: 5, color:'#06b6d4', icon:'⚓', available:false },
 ]
 
 // ── Quick-travel waypoints ────────────────────────────────────────────────────
 const WAYPOINTS = [
-  { name: 'Downtown',      col:  9, row: 12 },
-  { name: 'Balboa Park',   col:  9, row:  2 },
-  { name: 'Pacific Beach', col:  1, row:  8 },
-  { name: 'La Jolla',      col: 14, row:  1 },
-  { name: 'Hillcrest',     col:  9, row:  6 },
-  { name: 'UTC',           col: 20, row:  6 },
-  { name: 'North Park',    col: 20, row: 12 },
+  { name: 'Financial District', col: 21, row: 12 },
+  { name: 'Marina',             col: 12, row:  5 },
+  { name: 'North Park',         col: 37, row:  5 },
+  { name: 'Central Park',       col: 12, row: 20 },
+  { name: 'Ranch Houses',       col: 20, row: 27 },
+  { name: 'University Row',     col: 44, row: 20 },
+  { name: 'South Beach',        col:  4, row: 40 },
 ]
 
 // SVG viewBox size (arbitrary logical units for the top-down grid)
@@ -135,24 +165,30 @@ function CityMapSVG({
       )}
 
       {/* Grid lines at roads */}
-      {[5, 10, 15].map(c => (
+      {[8, 16, 24, 32, 40].map(c => (
         <line key={`gc${c}`} x1={c * CELL_PX} y1={0} x2={c * CELL_PX} y2={SVG_H}
           stroke="#0a0a18" strokeWidth={4} />
       ))}
-      {[5, 10, 15].map(r => (
+      {[8, 16, 24, 32, 40].map(r => (
         <line key={`gr${r}`} x1={0} y1={r * CELL_PX} x2={SVG_W} y2={r * CELL_PX}
           stroke="#0a0a18" strokeWidth={4} />
       ))}
 
       {/* Neighbourhood labels */}
       {showLabels && [
-        { t:'DOWNTOWN',      col: 9,  row:14 },
-        { t:'BALBOA PARK',   col: 9,  row: 2 },
-        { t:'PACIFIC BEACH', col: 1,  row: 8 },
-        { t:'HILLCREST',     col: 9,  row: 8 },
-        { t:'LA JOLLA',      col:14,  row: 1 },
-        { t:'UTC',           col:20,  row: 8 },
-        { t:'NORTH PARK',    col:20,  row:14 },
+        { t:'FINANCIAL',    col:21, row:12 },
+        { t:'MARINA',       col:12, row: 3 },
+        { t:'NORTH PARK',   col:37, row: 3 },
+        { t:'HOSPITAL',     col:36, row:11 },
+        { t:'LIBRARY',      col:44, row:11 },
+        { t:'CENTRAL PARK', col:12, row:20 },
+        { t:'COMMERCE',     col:28, row:20 },
+        { t:'LIBRARY 2',    col:36, row:20 },
+        { t:'RANCH',        col:15, row:27 },
+        { t:'THE MALL',     col:28, row:27 },
+        { t:'CITY HALL',    col:36, row:27 },
+        { t:'UNIVERSITY',   col:44, row:20 },
+        { t:'SOUTH BEACH',  col: 4, row:40 },
       ].map(l => (
         <text key={l.t}
           x={(l.col + 0.5) * CELL_PX} y={(l.row + 0.5) * CELL_PX}
@@ -290,15 +326,33 @@ function FullMap({ playerScreenPos, onClose, onTeleport }: {
     if (r < 0 || r >= GR || c < 0 || c >= GC) return 'Realm City'
     const cell = GRID[r]?.[c]
     if (!cell) return 'Realm City'
-    if (cell === 'water') return 'Pacific Ocean'
-    if (cell === 'beach') return 'Pacific Beach'
-    if (cell === 'park')  return 'Balboa Park'
-    if (cell === 'plaza') return 'Embarcadero'
-    if (r >= 13 && r <= 17 && c >= 7 && c <= 17) return 'Downtown'
-    if (r <= 5 && c >= 13) return 'La Jolla'
-    if (c >= 19 && r >= 7) return 'UTC'
-    if (c <= 2) return 'Pacific Beach'
-    if (r >= 7 && r <= 11 && c >= 7) return 'Hillcrest'
+    if (cell === 'water') return c < 8 ? 'Pacific Ocean' : 'Ocean'
+    if (cell === 'beach') return r >= 33 ? 'South Beach' : 'Beachfront'
+    if (cell === 'lake')  return 'Central Park Lake'
+    if (cell === 'dock')  return 'Marina District'
+    if (cell === 'dt')    return 'Financial District'
+    if (cell === 'plaza') return 'Financial Plaza'
+    if (cell === 'park') {
+      if (r <= 7) return c >= 33 ? 'North Park' : 'Ranch Yard'
+      return 'Central Park'
+    }
+    if (cell === 'com') {
+      if (c >= 9  && c <= 15 && r >= 9  && r <= 15) return 'Marina Commercial'
+      if (c >= 33 && c <= 39 && r >= 9  && r <= 15) return 'Realm Medical'
+      if (c >= 41 && c <= 47 && r >= 9  && r <= 15) return 'City Library'
+      if (c >= 25 && c <= 31 && r >= 17 && r <= 23) return 'Commerce District'
+      if (c >= 33 && c <= 39 && r >= 17 && r <= 23) return 'Library District'
+      if (c >= 25 && c <= 31 && r >= 25 && r <= 31) return 'The Mall'
+      if (c >= 33 && c <= 39 && r >= 25 && r <= 31) return 'City Hall District'
+      if (c >= 41 && c <= 47 && r >= 25 && r <= 31) return 'Gym District'
+      return 'Commercial Zone'
+    }
+    if (cell === 'res') {
+      if (r <= 7) return 'Ranch Houses'
+      if (r >= 25 && r <= 31) return 'Ranch South'
+      if (r >= 33) return 'Residential'
+      return 'Residential'
+    }
     return 'Realm City'
   }
 
@@ -448,8 +502,8 @@ function FullMap({ playerScreenPos, onClose, onTeleport }: {
 
 // ── Main export ───────────────────────────────────────────────────────────────
 export function MapHUD() {
-  // Player spawn: tile (8, 12) on road near downtown
-  const spawn = tileToScreen(8, 12)
+  // Player spawn: financial district (matches city-scene.ts)
+  const spawn = tileToScreen(21, 12)
   const [playerScreenPos, setPlayerScreenPos] = useState({ x: spawn.sx, y: spawn.sy })
   const [expanded, setExpanded] = useState(false)
 
