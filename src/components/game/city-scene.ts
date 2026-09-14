@@ -1,34 +1,169 @@
 import Phaser from "phaser"
 
-// ── Constants ─────────────────────────────────────────────────────────────────
-const GC      = 48          // grid cols
+// ── Constants ──────────────────────────────────────────────────────────────────
+const TW      = 48          // tile size (square, px)
+const GC      = 48          // grid columns
 const GR      = 48          // grid rows
-const HW      = 50          // half tile width  (tile = 100 wide — matches Kenney sprites)
-const HH      = 25          // half tile height (tile = 50 tall, 2:1 ratio)
-const FH      = 18          // pixels per building floor
-const OX      = 2500        // world-space origin x for tile (0,0)
-const OY      = 300         // world-space origin y
-const WORLD_W = 5400
-const WORLD_H = 3000
-const SPEED   = 250
-const ENT_R   = 90
+const WORLD_W = GC * TW     // 2304
+const WORLD_H = GR * TW     // 2304
+const SPEED   = 220         // player px / sec
+const ENT_R   = 68          // entry detection radius px
+const P_R     = 13          // player collision radius px
 
-// ── Coordinate helpers ────────────────────────────────────────────────────────
-function ts(col: number, row: number) {
-  return { sx: OX + (col - row) * HW, sy: OY + (col + row) * HH }
-}
-function st(sx: number, sy: number) {
-  const dx = sx - OX, dy = sy - OY
-  return { col: (dx / HW + dy / HH) / 2, row: (dy / HH - dx / HW) / 2 }
+// ── Tile type indices (match tileset canvas column order) ──────────────────────
+const TI = {
+  GRASS: 0, ROAD_H: 1, ROAD_V: 2, INTER: 3, WATER: 4,
+  BEACH: 5, PLAZA: 6, COM: 7, DT: 8, DOCK: 9, LAKE: 10, PARK: 11,
+} as const
+type TiVal = typeof TI[keyof typeof TI]
+const NT = 12  // number of tile types
+
+// ── 48×48 grid (roads at cols/rows 8,16,24,32,40) ─────────────────────────────
+const COL_ROADS = new Set([8, 16, 24, 32, 40])
+const ROW_ROADS = new Set([8, 16, 24, 32, 40])
+
+const RAW: string[][] = [
+  ['W','W','W','W','W','W','W','W','R','d','d','c','c','c','c','c','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','K','K','K','K','K','K','K','R','K','K','K','K','K','K','K'],
+  ['W','W','W','W','W','W','W','W','R','d','d','c','c','c','c','c','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','K','K','K','K','K','K','K','R','K','K','K','K','K','K','K'],
+  ['W','W','W','W','W','W','W','W','R','d','d','c','c','c','c','c','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','K','K','K','K','K','K','K','R','K','K','K','K','K','K','K'],
+  ['W','W','W','W','W','W','W','W','R','d','d','c','c','c','c','c','R','K','s','s','s','K','s','s','R','K','s','s','s','K','s','s','R','K','K','K','K','K','K','K','R','K','K','K','K','K','K','K'],
+  ['W','W','W','W','W','W','W','W','R','d','d','c','c','c','c','c','R','K','s','s','s','K','s','s','R','K','s','s','s','K','s','s','R','K','K','K','K','K','K','K','R','K','K','K','K','K','K','K'],
+  ['W','W','W','W','W','W','W','W','R','d','d','c','c','c','c','c','R','K','K','s','s','K','K','s','R','K','K','s','s','K','K','s','R','K','K','K','K','K','K','K','R','K','K','K','K','K','K','K'],
+  ['W','W','W','W','W','W','W','W','R','d','d','c','c','c','c','c','R','K','K','s','s','K','K','s','R','K','K','s','s','K','K','s','R','K','K','K','K','K','K','K','R','K','K','K','K','K','K','K'],
+  ['W','W','W','W','W','W','W','W','R','d','d','c','c','c','c','c','R','K','K','s','s','K','K','s','R','K','K','s','s','K','K','s','R','K','K','K','K','K','K','K','R','K','K','K','K','K','K','K'],
+  ['R','R','R','R','R','R','R','R','X','R','R','R','R','R','R','R','X','R','R','R','R','R','R','R','X','R','R','R','R','R','R','R','X','R','R','R','R','R','R','R','X','R','R','R','R','R','R','R'],
+  ['W','W','W','W','W','W','W','W','R','d','d','c','c','c','c','c','R','D','D','D','D','D','D','D','R','D','D','D','D','D','D','D','R','c','c','c','c','c','c','c','R','c','c','c','c','c','c','c'],
+  ['W','W','W','W','W','W','W','W','R','d','d','c','c','c','c','c','R','D','D','D','D','D','D','D','R','D','D','D','D','D','D','D','R','c','c','c','c','c','c','c','R','c','c','c','c','c','c','c'],
+  ['W','W','W','W','W','W','W','W','R','d','d','c','c','c','c','c','R','D','D','D','D','D','D','D','R','D','D','D','D','D','D','D','R','c','c','c','c','c','c','c','R','c','c','c','c','c','c','c'],
+  ['W','W','W','W','W','W','W','W','R','d','d','c','c','c','c','c','R','D','P','P','P','P','D','D','R','P','P','P','D','D','P','P','R','c','c','c','c','c','c','c','R','c','c','c','c','c','c','c'],
+  ['W','W','W','W','W','W','W','W','R','d','d','c','c','c','c','c','R','D','P','P','P','P','D','D','R','P','P','P','D','D','P','P','R','c','c','c','c','c','c','c','R','c','c','c','c','c','c','c'],
+  ['W','W','W','W','W','W','W','W','R','d','d','c','c','c','c','c','R','D','D','D','D','D','D','D','R','D','D','D','D','D','D','D','R','c','c','c','c','c','c','c','R','c','c','c','c','c','c','c'],
+  ['W','W','W','W','W','W','W','W','R','d','d','c','c','c','c','c','R','D','D','D','D','D','D','D','R','D','D','D','D','D','D','D','R','c','c','c','c','c','c','c','R','c','c','c','c','c','c','c'],
+  ['R','R','R','R','R','R','R','R','X','R','R','R','R','R','R','R','X','R','R','R','R','R','R','R','X','R','R','R','R','R','R','R','X','R','R','R','R','R','R','R','X','R','R','R','R','R','R','R'],
+  ['W','W','W','W','W','W','W','W','R','K','K','K','K','K','K','K','R','K','K','K','K','K','K','K','R','c','c','c','c','c','c','c','R','c','c','c','c','c','c','c','R','s','s','s','s','s','s','s'],
+  ['W','W','W','W','W','W','W','W','R','K','K','L','L','L','K','K','R','K','K','K','K','K','K','K','R','c','c','c','c','c','c','c','R','c','c','c','c','c','c','c','R','s','s','s','s','s','s','s'],
+  ['W','W','W','W','W','W','W','W','R','K','K','L','L','L','K','K','R','K','K','K','K','K','K','K','R','P','P','P','P','P','P','P','R','c','c','c','c','c','c','c','R','s','s','s','s','s','s','s'],
+  ['W','W','W','W','W','W','W','W','R','K','K','L','L','L','K','K','R','K','K','K','K','K','K','K','R','P','P','P','P','P','P','P','R','c','c','c','c','c','c','c','R','s','s','s','s','s','s','s'],
+  ['W','W','W','W','W','W','W','W','R','K','K','L','L','L','K','K','R','K','K','K','K','K','K','K','R','c','c','c','c','c','c','c','R','c','c','c','c','c','c','c','R','s','s','s','s','s','s','s'],
+  ['W','W','W','W','W','W','W','W','R','K','K','L','L','L','K','K','R','K','K','K','K','K','K','K','R','c','c','c','c','c','c','c','R','c','c','c','c','c','c','c','R','s','s','s','s','s','s','s'],
+  ['W','W','W','W','W','W','W','W','R','K','K','K','K','K','K','K','R','K','K','K','K','K','K','K','R','c','c','c','c','c','c','c','R','c','c','c','c','c','c','c','R','s','s','s','s','s','s','s'],
+  ['R','R','R','R','R','R','R','R','X','R','R','R','R','R','R','R','X','R','R','R','R','R','R','R','X','R','R','R','R','R','R','R','X','R','R','R','R','R','R','R','X','R','R','R','R','R','R','R'],
+  ['W','W','W','W','W','W','W','W','R','K','K','s','s','s','K','K','R','s','s','K','K','s','s','s','R','c','c','c','c','c','c','c','R','c','c','c','c','c','c','c','R','s','s','s','s','s','s','s'],
+  ['W','W','W','W','W','W','W','W','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','c','c','c','c','c','c','c','R','c','c','c','c','c','c','c','R','s','s','s','s','s','s','s'],
+  ['W','W','W','W','W','W','W','W','R','s','s','s','K','s','s','s','R','K','s','s','s','s','K','s','R','c','c','c','c','c','c','c','R','c','c','c','c','c','c','c','R','s','s','s','s','s','s','s'],
+  ['W','W','W','W','W','W','W','W','R','K','K','s','s','s','K','K','R','s','s','K','K','s','s','s','R','c','c','c','c','c','c','c','R','c','c','c','c','c','c','c','R','s','s','s','s','s','s','s'],
+  ['W','W','W','W','W','W','W','W','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','c','c','c','c','c','c','c','R','c','c','c','c','c','c','c','R','s','s','s','s','s','s','s'],
+  ['W','W','W','W','W','W','W','W','R','s','s','s','K','s','s','s','R','K','s','s','s','s','K','s','R','c','c','c','c','c','c','c','R','c','c','c','c','c','c','c','R','s','s','s','s','s','s','s'],
+  ['W','W','W','W','W','W','W','W','R','K','K','s','s','s','K','K','R','s','s','K','K','s','s','s','R','c','c','c','c','c','c','c','R','c','c','c','c','c','c','c','R','s','s','s','s','s','s','s'],
+  ['R','R','R','R','R','R','R','R','X','R','R','R','R','R','R','R','X','R','R','R','R','R','R','R','X','R','R','R','R','R','R','R','X','R','R','R','R','R','R','R','X','R','R','R','R','R','R','R'],
+  ['B','B','B','B','B','B','B','B','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s'],
+  ['B','B','B','B','B','B','B','B','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s'],
+  ['B','B','B','B','B','B','B','B','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s'],
+  ['B','B','B','B','B','B','B','B','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s'],
+  ['B','B','B','B','B','B','B','B','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s'],
+  ['B','B','B','B','B','B','B','B','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s'],
+  ['B','B','B','B','B','B','B','B','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s'],
+  ['R','R','R','R','R','R','R','R','X','R','R','R','R','R','R','R','X','R','R','R','R','R','R','R','X','R','R','R','R','R','R','R','X','R','R','R','R','R','R','R','X','R','R','R','R','R','R','R'],
+  ['B','B','B','B','B','B','B','B','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s'],
+  ['B','B','B','B','B','B','B','B','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s'],
+  ['B','B','B','B','B','B','B','B','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s'],
+  ['B','B','B','B','B','B','B','B','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s'],
+  ['B','B','B','B','B','B','B','B','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s'],
+  ['B','B','B','B','B','B','B','B','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s'],
+  ['B','B','B','B','B','B','B','B','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s'],
+]
+
+const KEY_MAP: Record<string, TiVal> = {
+  W: TI.WATER, B: TI.BEACH, K: TI.PARK, P: TI.PLAZA,
+  s: TI.GRASS, c: TI.COM,   D: TI.DT,   d: TI.DOCK, L: TI.LAKE,
 }
 
-// ── Seeded RNG ────────────────────────────────────────────────────────────────
-function lcg(seed: number) {
-  let s = (seed ^ 0xdeadbeef) >>> 0
-  return () => { s = (Math.imul(s, 1664525) + 1013904223) >>> 0; return s / 0x100000000 }
+const GRID_DATA: TiVal[][] = RAW.map((row, r) =>
+  row.map((ch, c) => {
+    if (COL_ROADS.has(c) && ROW_ROADS.has(r)) return TI.INTER
+    if (COL_ROADS.has(c)) return TI.ROAD_V
+    if (ROW_ROADS.has(r)) return TI.ROAD_H
+    return KEY_MAP[ch] ?? TI.GRASS
+  })
+)
+
+// ── Buildings ──────────────────────────────────────────────────────────────────
+interface Bldg {
+  id: string; name: string; col: number; row: number
+  color: number; available: boolean; href: string
+  w?: number; h?: number; kind?: string; seats?: number
 }
 
-// ── Color helpers ─────────────────────────────────────────────────────────────
+const BUILDINGS: Bldg[] = [
+  // Financial District
+  { id:'bank',    name:'First Realm Bank',    col:19, row:11, color:0x10b981, available:true,  href:'/buildings/bank',       w:3, h:2 },
+  { id:'office',  name:'Realm Tower',         col:22, row:10, color:0x0891b2, available:false, href:'/buildings/office',     w:2, h:2 },
+  { id:'office2', name:'Exchange Building',   col:27, row:10, color:0x3730a3, available:false, href:'/buildings/office',     w:2, h:2 },
+  { id:'office3', name:'Financial HQ',        col:29, row:14, color:0x1d4ed8, available:false, href:'/buildings/office',     w:2, h:2 },
+  { id:'office4', name:'Commerce Plaza',      col:20, row:15, color:0x0f766e, available:false, href:'/buildings/office',     w:2, h:1 },
+  { id:'fin_t1',  name:'Plaza Café ☕',        col:19, row:12, color:0xf59e0b, available:false, href:'/zone/plaza-1', kind:'table', seats:8 },
+  { id:'fin_t2',  name:'Terrace Lounge',      col:21, row:13, color:0xf59e0b, available:false, href:'/zone/plaza-2', kind:'table', seats:8 },
+  { id:'fin_t3',  name:'Garden Seating',      col:25, row:12, color:0xf59e0b, available:false, href:'/zone/plaza-3', kind:'table', seats:8 },
+  { id:'fin_t4',  name:'Sky Deck Table',      col:27, row:13, color:0xf59e0b, available:false, href:'/zone/plaza-4', kind:'table', seats:8 },
+  { id:'fin_t5',  name:'Courtyard Table',     col:30, row:12, color:0xf59e0b, available:false, href:'/zone/plaza-5', kind:'table', seats:8 },
+  // Marina
+  { id:'marina',  name:'Realm Marina',        col:12, row: 5, color:0x0ea5e9, available:false, href:'/buildings/marina',     w:2, h:2 },
+  { id:'yacht',   name:'Yacht Club',          col:13, row:11, color:0x0369a1, available:false, href:'/buildings/marina',     w:2, h:2 },
+  { id:'boat1',   name:'The Pelican',         col: 3, row: 2, color:0xf97316, available:false, href:'/zone/boat-1', kind:'boat', seats:50 },
+  { id:'boat2',   name:'The Albatross',       col: 2, row: 5, color:0xec4899, available:false, href:'/zone/boat-2', kind:'boat', seats:50 },
+  { id:'boat3',   name:'Marina Star',         col: 4, row:11, color:0x8b5cf6, available:false, href:'/zone/boat-3', kind:'boat', seats:50 },
+  { id:'boat4',   name:'The Compass',         col: 1, row:14, color:0x10b981, available:false, href:'/zone/boat-4', kind:'boat', seats:50 },
+  // Hospital
+  { id:'hospital',  name:'Realm Medical',     col:36, row:10, color:0xef4444, available:false, href:'/buildings/hospital',   w:3, h:3 },
+  { id:'hosp_conf', name:'Med. Conf. Hall',   col:35, row:13, color:0xfca5a5, available:false, href:'/buildings/hospital',   w:2, h:1 },
+  // Libraries
+  { id:'library',   name:'City Library',      col:42, row:10, color:0x3b82f6, available:true,  href:'/buildings/library',    w:4, h:3 },
+  { id:'library2',  name:'South Branch Lib.', col:35, row:18, color:0x6366f1, available:false, href:'/buildings/library',    w:3, h:2 },
+  // Park benches
+  { id:'bench1', name:'Lakeside Bench A', col: 9, row:18, color:0x84cc16, available:false, href:'/zone/bench-1', kind:'bench', seats:8 },
+  { id:'bench2', name:'Lakeside Bench B', col: 9, row:21, color:0x84cc16, available:false, href:'/zone/bench-2', kind:'bench', seats:8 },
+  { id:'bench3', name:'Lakeside Bench C', col:14, row:18, color:0x84cc16, available:false, href:'/zone/bench-3', kind:'bench', seats:8 },
+  { id:'bench4', name:'Lakeside Bench D', col:14, row:21, color:0x84cc16, available:false, href:'/zone/bench-4', kind:'bench', seats:8 },
+  { id:'bench5', name:'Meadow Table A',   col:17, row:18, color:0x84cc16, available:false, href:'/zone/bench-5', kind:'bench', seats:8 },
+  { id:'bench6', name:'Meadow Table B',   col:20, row:19, color:0x84cc16, available:false, href:'/zone/bench-6', kind:'bench', seats:8 },
+  { id:'bench7', name:'Meadow Table C',   col:23, row:18, color:0x84cc16, available:false, href:'/zone/bench-7', kind:'bench', seats:8 },
+  { id:'bench8', name:'Meadow Table D',   col:18, row:22, color:0x84cc16, available:false, href:'/zone/bench-8', kind:'bench', seats:8 },
+  { id:'bench9', name:'Meadow Table E',   col:21, row:22, color:0x84cc16, available:false, href:'/zone/bench-9', kind:'bench', seats:8 },
+  // Ranch Houses
+  { id:'home',   name:'Your Home',        col:20, row: 3, color:0xf59e0b, available:false, href:'/buildings/home',       w:2, h:2 },
+  { id:'ranch1', name:'Oak Ranch',        col:25, row: 4, color:0xd97706, available:false, href:'/buildings/home',       w:2, h:1 },
+  { id:'ranch2', name:'Sunset Ranch',     col:28, row: 2, color:0xb45309, available:false, href:'/buildings/home',       w:2, h:1 },
+  { id:'ranch3', name:'Cedar House',      col:11, row:26, color:0x92400e, available:false, href:'/buildings/home',       w:2, h:1 },
+  { id:'ranch4', name:'Meadow House',     col:18, row:28, color:0xa16207, available:false, href:'/buildings/home',       w:2, h:1 },
+  { id:'ranch5', name:'Creekside Home',   col:21, row:25, color:0xca8a04, available:false, href:'/buildings/home',       w:2, h:2 },
+  { id:'ranch_t1', name:'Ranch Patio',    col:22, row: 4, color:0xfbbf24, available:false, href:'/zone/ranch-1', kind:'table', seats:8 },
+  { id:'ranch_t2', name:'Garden Hangout', col:13, row:27, color:0xfbbf24, available:false, href:'/zone/ranch-2', kind:'table', seats:8 },
+  // Other districts
+  { id:'university', name:'Realm University', col:43, row:19, color:0x8b5cf6, available:false, href:'/buildings/university', w:3, h:3 },
+  { id:'mall',       name:'The Mall',          col:27, row:26, color:0xec4899, available:false, href:'/buildings/mall',       w:4, h:3 },
+  { id:'government', name:'City Hall',         col:35, row:26, color:0x64748b, available:false, href:'/buildings/government', w:3, h:3 },
+  { id:'gym',        name:'Iron District Gym', col:42, row:26, color:0xf97316, available:false, href:'/buildings/gym',        w:3, h:2 },
+]
+
+// Blocked tiles (building footprints, non-collidable kinds excluded)
+const BLOCKED = new Set<string>()
+for (const b of BUILDINGS) {
+  if (b.kind) continue
+  const w = b.w ?? 2, h = b.h ?? 2
+  for (let dc = 0; dc < w; dc++)
+    for (let dr = 0; dr < h; dr++)
+      BLOCKED.add(`${b.col + dc},${b.row + dr}`)
+}
+
+function canWalk(px: number, py: number): boolean {
+  const c = Math.floor(px / TW), r = Math.floor(py / TW)
+  if (c < 0 || c >= GC || r < 0 || r >= GR) return false
+  const ti = GRID_DATA[r]?.[c]
+  if (ti === TI.WATER || ti === TI.LAKE) return false
+  return !BLOCKED.has(`${c},${r}`)
+}
+
+// Color helpers (same as before, used for building drawing)
 function dk(c: number, f: number): number {
   return (Math.floor(((c >> 16) & 0xff) * f) << 16) |
          (Math.floor(((c >>  8) & 0xff) * f) <<  8) |
@@ -40,791 +175,532 @@ function lk(c: number, f: number): number {
           Math.min(255, Math.floor( (c        & 0xff) * f))
 }
 
-// ── Grid (24×24) ───────────────────────────────────────────────────────────────
-type T = 'water'|'beach'|'park'|'plaza'|'road'|'inter'|'res'|'com'|'dt'|'dock'|'lake'
-
-// Roads at cols/rows 8,16,24,32,40  —  48×48 full city grid
-const RAW: string[][] = [
-  ['W','W','W','W','W','W','W','W','R','d','d','c','c','c','c','c','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','K','K','K','K','K','K','K','R','K','K','K','K','K','K','K'], //  0
-  ['W','W','W','W','W','W','W','W','R','d','d','c','c','c','c','c','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','K','K','K','K','K','K','K','R','K','K','K','K','K','K','K'], //  1
-  ['W','W','W','W','W','W','W','W','R','d','d','c','c','c','c','c','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','K','K','K','K','K','K','K','R','K','K','K','K','K','K','K'], //  2
-  ['W','W','W','W','W','W','W','W','R','d','d','c','c','c','c','c','R','K','s','s','s','K','s','s','R','K','s','s','s','K','s','s','R','K','K','K','K','K','K','K','R','K','K','K','K','K','K','K'], //  3
-  ['W','W','W','W','W','W','W','W','R','d','d','c','c','c','c','c','R','K','s','s','s','K','s','s','R','K','s','s','s','K','s','s','R','K','K','K','K','K','K','K','R','K','K','K','K','K','K','K'], //  4
-  ['W','W','W','W','W','W','W','W','R','d','d','c','c','c','c','c','R','K','K','s','s','K','K','s','R','K','K','s','s','K','K','s','R','K','K','K','K','K','K','K','R','K','K','K','K','K','K','K'], //  5
-  ['W','W','W','W','W','W','W','W','R','d','d','c','c','c','c','c','R','K','K','s','s','K','K','s','R','K','K','s','s','K','K','s','R','K','K','K','K','K','K','K','R','K','K','K','K','K','K','K'], //  6
-  ['W','W','W','W','W','W','W','W','R','d','d','c','c','c','c','c','R','K','K','s','s','K','K','s','R','K','K','s','s','K','K','s','R','K','K','K','K','K','K','K','R','K','K','K','K','K','K','K'], //  7
-  ['R','R','R','R','R','R','R','R','X','R','R','R','R','R','R','R','X','R','R','R','R','R','R','R','X','R','R','R','R','R','R','R','X','R','R','R','R','R','R','R','X','R','R','R','R','R','R','R'], //  8 EW
-  ['W','W','W','W','W','W','W','W','R','d','d','c','c','c','c','c','R','D','D','D','D','D','D','D','R','D','D','D','D','D','D','D','R','c','c','c','c','c','c','c','R','c','c','c','c','c','c','c'], //  9
-  ['W','W','W','W','W','W','W','W','R','d','d','c','c','c','c','c','R','D','D','D','D','D','D','D','R','D','D','D','D','D','D','D','R','c','c','c','c','c','c','c','R','c','c','c','c','c','c','c'], // 10
-  ['W','W','W','W','W','W','W','W','R','d','d','c','c','c','c','c','R','D','D','D','D','D','D','D','R','D','D','D','D','D','D','D','R','c','c','c','c','c','c','c','R','c','c','c','c','c','c','c'], // 11
-  ['W','W','W','W','W','W','W','W','R','d','d','c','c','c','c','c','R','D','P','P','P','P','D','D','R','P','P','P','D','D','P','P','R','c','c','c','c','c','c','c','R','c','c','c','c','c','c','c'], // 12
-  ['W','W','W','W','W','W','W','W','R','d','d','c','c','c','c','c','R','D','P','P','P','P','D','D','R','P','P','P','D','D','P','P','R','c','c','c','c','c','c','c','R','c','c','c','c','c','c','c'], // 13
-  ['W','W','W','W','W','W','W','W','R','d','d','c','c','c','c','c','R','D','D','D','D','D','D','D','R','D','D','D','D','D','D','D','R','c','c','c','c','c','c','c','R','c','c','c','c','c','c','c'], // 14
-  ['W','W','W','W','W','W','W','W','R','d','d','c','c','c','c','c','R','D','D','D','D','D','D','D','R','D','D','D','D','D','D','D','R','c','c','c','c','c','c','c','R','c','c','c','c','c','c','c'], // 15
-  ['R','R','R','R','R','R','R','R','X','R','R','R','R','R','R','R','X','R','R','R','R','R','R','R','X','R','R','R','R','R','R','R','X','R','R','R','R','R','R','R','X','R','R','R','R','R','R','R'], // 16 EW
-  ['W','W','W','W','W','W','W','W','R','K','K','K','K','K','K','K','R','K','K','K','K','K','K','K','R','c','c','c','c','c','c','c','R','c','c','c','c','c','c','c','R','s','s','s','s','s','s','s'], // 17
-  ['W','W','W','W','W','W','W','W','R','K','K','L','L','L','K','K','R','K','K','K','K','K','K','K','R','c','c','c','c','c','c','c','R','c','c','c','c','c','c','c','R','s','s','s','s','s','s','s'], // 18
-  ['W','W','W','W','W','W','W','W','R','K','K','L','L','L','K','K','R','K','K','K','K','K','K','K','R','P','P','P','P','P','P','P','R','c','c','c','c','c','c','c','R','s','s','s','s','s','s','s'], // 19
-  ['W','W','W','W','W','W','W','W','R','K','K','L','L','L','K','K','R','K','K','K','K','K','K','K','R','P','P','P','P','P','P','P','R','c','c','c','c','c','c','c','R','s','s','s','s','s','s','s'], // 20
-  ['W','W','W','W','W','W','W','W','R','K','K','L','L','L','K','K','R','K','K','K','K','K','K','K','R','c','c','c','c','c','c','c','R','c','c','c','c','c','c','c','R','s','s','s','s','s','s','s'], // 21
-  ['W','W','W','W','W','W','W','W','R','K','K','L','L','L','K','K','R','K','K','K','K','K','K','K','R','c','c','c','c','c','c','c','R','c','c','c','c','c','c','c','R','s','s','s','s','s','s','s'], // 22
-  ['W','W','W','W','W','W','W','W','R','K','K','K','K','K','K','K','R','K','K','K','K','K','K','K','R','c','c','c','c','c','c','c','R','c','c','c','c','c','c','c','R','s','s','s','s','s','s','s'], // 23
-  ['R','R','R','R','R','R','R','R','X','R','R','R','R','R','R','R','X','R','R','R','R','R','R','R','X','R','R','R','R','R','R','R','X','R','R','R','R','R','R','R','X','R','R','R','R','R','R','R'], // 24 EW
-  ['W','W','W','W','W','W','W','W','R','K','K','s','s','s','K','K','R','s','s','K','K','s','s','s','R','c','c','c','c','c','c','c','R','c','c','c','c','c','c','c','R','s','s','s','s','s','s','s'], // 25
-  ['W','W','W','W','W','W','W','W','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','c','c','c','c','c','c','c','R','c','c','c','c','c','c','c','R','s','s','s','s','s','s','s'], // 26
-  ['W','W','W','W','W','W','W','W','R','s','s','s','K','s','s','s','R','K','s','s','s','s','K','s','R','c','c','c','c','c','c','c','R','c','c','c','c','c','c','c','R','s','s','s','s','s','s','s'], // 27
-  ['W','W','W','W','W','W','W','W','R','K','K','s','s','s','K','K','R','s','s','K','K','s','s','s','R','c','c','c','c','c','c','c','R','c','c','c','c','c','c','c','R','s','s','s','s','s','s','s'], // 28
-  ['W','W','W','W','W','W','W','W','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','c','c','c','c','c','c','c','R','c','c','c','c','c','c','c','R','s','s','s','s','s','s','s'], // 29
-  ['W','W','W','W','W','W','W','W','R','s','s','s','K','s','s','s','R','K','s','s','s','s','K','s','R','c','c','c','c','c','c','c','R','c','c','c','c','c','c','c','R','s','s','s','s','s','s','s'], // 30
-  ['W','W','W','W','W','W','W','W','R','K','K','s','s','s','K','K','R','s','s','K','K','s','s','s','R','c','c','c','c','c','c','c','R','c','c','c','c','c','c','c','R','s','s','s','s','s','s','s'], // 31
-  ['R','R','R','R','R','R','R','R','X','R','R','R','R','R','R','R','X','R','R','R','R','R','R','R','X','R','R','R','R','R','R','R','X','R','R','R','R','R','R','R','X','R','R','R','R','R','R','R'], // 32 EW
-  ['B','B','B','B','B','B','B','B','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s'], // 33
-  ['B','B','B','B','B','B','B','B','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s'], // 34
-  ['B','B','B','B','B','B','B','B','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s'], // 35
-  ['B','B','B','B','B','B','B','B','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s'], // 36
-  ['B','B','B','B','B','B','B','B','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s'], // 37
-  ['B','B','B','B','B','B','B','B','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s'], // 38
-  ['B','B','B','B','B','B','B','B','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s'], // 39
-  ['R','R','R','R','R','R','R','R','X','R','R','R','R','R','R','R','X','R','R','R','R','R','R','R','X','R','R','R','R','R','R','R','X','R','R','R','R','R','R','R','X','R','R','R','R','R','R','R'], // 40 EW
-  ['B','B','B','B','B','B','B','B','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s'], // 41
-  ['B','B','B','B','B','B','B','B','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s'], // 42
-  ['B','B','B','B','B','B','B','B','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s'], // 43
-  ['B','B','B','B','B','B','B','B','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s'], // 44
-  ['B','B','B','B','B','B','B','B','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s'], // 45
-  ['B','B','B','B','B','B','B','B','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s'], // 46
-  ['B','B','B','B','B','B','B','B','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s','R','s','s','s','s','s','s','s'], // 47
-]
-const KEY: Record<string, T> = { W:'water',B:'beach',K:'park',P:'plaza',R:'road',X:'inter',s:'res',c:'com',D:'dt',d:'dock',L:'lake' }
-const GRID: T[][] = RAW.map(r => r.map(c => KEY[c]))
-
-// Walk everywhere except water
-function walkable(col: number, row: number): boolean {
-  const c = Math.floor(col), r = Math.floor(row)
-  if (c < 0 || c >= GC || r < 0 || r >= GR) return false
-  return GRID[r]?.[c] !== 'water'
-}
-
-function canOccupy(sx: number, sy: number): boolean {
-  const center = st(sx, sy)
-  return walkable(center.col, center.row)
-}
-
-// ── Named buildings ────────────────────────────────────────────────────────────
-interface Bldg { id:string; name:string; col:number; row:number; color:number; available:boolean; href:string; floors:number; kind?:string; seats?:number }
-const BUILDINGS: Bldg[] = [
-  // ── Financial District (cols 17-31, rows 9-15) ──────────────────────────
-  { id:'bank',    name:'First Realm Bank',    col:19, row:11, floors:6,  color:0x10b981, available:true,  href:'/buildings/bank'    },
-  { id:'office',  name:'Realm Tower',         col:22, row:10, floors:11, color:0x0891b2, available:false, href:'/buildings/office'  },
-  { id:'office2', name:'Exchange Building',   col:27, row:10, floors:8,  color:0x3730a3, available:false, href:'/buildings/office'  },
-  { id:'office3', name:'Financial HQ',        col:29, row:14, floors:12, color:0x1d4ed8, available:false, href:'/buildings/office'  },
-  { id:'office4', name:'Commerce Plaza',      col:20, row:15, floors:7,  color:0x0f766e, available:false, href:'/buildings/office'  },
-  // Financial outdoor tables (spatial audio zones)
-  { id:'fin_t1',  name:'Plaza Café ☕',        col:19, row:12, floors:0, color:0xf59e0b, available:false, href:'/zone/plaza-1', kind:'table', seats:8 },
-  { id:'fin_t2',  name:'Terrace Lounge',      col:21, row:13, floors:0, color:0xf59e0b, available:false, href:'/zone/plaza-2', kind:'table', seats:8 },
-  { id:'fin_t3',  name:'Garden Seating',      col:25, row:12, floors:0, color:0xf59e0b, available:false, href:'/zone/plaza-3', kind:'table', seats:8 },
-  { id:'fin_t4',  name:'Sky Deck Table',      col:27, row:13, floors:0, color:0xf59e0b, available:false, href:'/zone/plaza-4', kind:'table', seats:8 },
-  { id:'fin_t5',  name:'Courtyard Table',     col:30, row:12, floors:0, color:0xf59e0b, available:false, href:'/zone/plaza-5', kind:'table', seats:8 },
-  // ── Marina / Docks (cols 9-15, rows 0-15) ───────────────────────────────
-  { id:'marina',  name:'Realm Marina',        col:12, row: 5, floors:2, color:0x0ea5e9, available:false, href:'/buildings/marina'  },
-  { id:'yacht_club', name:'Yacht Club',       col:13, row:11, floors:2, color:0x0369a1, available:false, href:'/buildings/marina'  },
-  // Boats (on water tiles, col 0-7)
-  { id:'boat1',   name:'The Pelican',         col: 4, row: 2, floors:0, color:0xf97316, available:false, href:'/zone/boat-1', kind:'boat', seats:50 },
-  { id:'boat2',   name:'The Albatross',       col: 3, row: 5, floors:0, color:0xec4899, available:false, href:'/zone/boat-2', kind:'boat', seats:50 },
-  { id:'boat3',   name:'Marina Star',         col: 5, row:11, floors:0, color:0x8b5cf6, available:false, href:'/zone/boat-3', kind:'boat', seats:50 },
-  { id:'boat4',   name:'The Compass',         col: 2, row:14, floors:0, color:0x10b981, available:false, href:'/zone/boat-4', kind:'boat', seats:50 },
-  // ── Hospital (cols 33-39, rows 9-15) ────────────────────────────────────
-  { id:'hospital',  name:'Realm Medical Ctr', col:36, row:11, floors:5, color:0xef4444, available:false, href:'/buildings/hospital'  },
-  { id:'hosp_conf', name:'Medical Conf. Hall', col:35, row:13, floors:2, color:0xfca5a5, available:false, href:'/buildings/hospital'  },
-  // ── Libraries ────────────────────────────────────────────────────────────
-  { id:'library',   name:'City Library',      col:43, row:11, floors:3, color:0x3b82f6, available:true,  href:'/buildings/library'   },
-  { id:'library2',  name:'South Branch Lib.', col:36, row:19, floors:2, color:0x6366f1, available:false, href:'/buildings/library'   },
-  // ── Park with Lake (cols 9-23, rows 17-23) ──────────────────────────────
-  // Benches around the lake (block 1: cols 9-15) — 8-person spatial zones
-  { id:'bench1', name:'Lakeside Bench A', col: 9, row:18, floors:0, color:0x84cc16, available:false, href:'/zone/bench-1', kind:'bench', seats:8 },
-  { id:'bench2', name:'Lakeside Bench B', col: 9, row:21, floors:0, color:0x84cc16, available:false, href:'/zone/bench-2', kind:'bench', seats:8 },
-  { id:'bench3', name:'Lakeside Bench C', col:14, row:18, floors:0, color:0x84cc16, available:false, href:'/zone/bench-3', kind:'bench', seats:8 },
-  { id:'bench4', name:'Lakeside Bench D', col:14, row:21, floors:0, color:0x84cc16, available:false, href:'/zone/bench-4', kind:'bench', seats:8 },
-  // Meadow tables (block 2: cols 17-23) — separated so zones don't overlap
-  { id:'bench5', name:'Meadow Table A',   col:17, row:18, floors:0, color:0x84cc16, available:false, href:'/zone/bench-5', kind:'bench', seats:8 },
-  { id:'bench6', name:'Meadow Table B',   col:20, row:19, floors:0, color:0x84cc16, available:false, href:'/zone/bench-6', kind:'bench', seats:8 },
-  { id:'bench7', name:'Meadow Table C',   col:23, row:18, floors:0, color:0x84cc16, available:false, href:'/zone/bench-7', kind:'bench', seats:8 },
-  { id:'bench8', name:'Meadow Table D',   col:18, row:22, floors:0, color:0x84cc16, available:false, href:'/zone/bench-8', kind:'bench', seats:8 },
-  { id:'bench9', name:'Meadow Table E',   col:21, row:22, floors:0, color:0x84cc16, available:false, href:'/zone/bench-9', kind:'bench', seats:8 },
-  // ── Ranch Houses ─────────────────────────────────────────────────────────
-  { id:'home',    name:'Your Home',           col:20, row: 3, floors:2, color:0xf59e0b, available:false, href:'/buildings/home'     },
-  { id:'ranch1',  name:'Oak Ranch',           col:25, row: 4, floors:1, color:0xd97706, available:false, href:'/buildings/home'     },
-  { id:'ranch2',  name:'Sunset Ranch',        col:28, row: 2, floors:1, color:0xb45309, available:false, href:'/buildings/home'     },
-  { id:'ranch3',  name:'Cedar House',         col:11, row:26, floors:1, color:0x92400e, available:false, href:'/buildings/home'     },
-  { id:'ranch4',  name:'Meadow House',        col:18, row:28, floors:1, color:0xa16207, available:false, href:'/buildings/home'     },
-  { id:'ranch5',  name:'Creekside Home',      col:21, row:25, floors:2, color:0xca8a04, available:false, href:'/buildings/home'     },
-  // Ranch outdoor hangout tables
-  { id:'ranch_t1', name:'Ranch Patio',        col:22, row: 4, floors:0, color:0xfbbf24, available:false, href:'/zone/ranch-1', kind:'table', seats:8 },
-  { id:'ranch_t2', name:'Garden Hangout',     col:13, row:27, floors:0, color:0xfbbf24, available:false, href:'/zone/ranch-2', kind:'table', seats:8 },
-  // ── University ──────────────────────────────────────────────────────────
-  { id:'university', name:'Realm University', col:44, row:20, floors:4, color:0x8b5cf6, available:false, href:'/buildings/university' },
-  // ── Mall ────────────────────────────────────────────────────────────────
-  { id:'mall',       name:'The Mall',         col:28, row:27, floors:3, color:0xec4899, available:false, href:'/buildings/mall'      },
-  // ── Government ──────────────────────────────────────────────────────────
-  { id:'government', name:'City Hall',        col:36, row:27, floors:5, color:0x64748b, available:false, href:'/buildings/government'},
-  { id:'gym',        name:'Iron District Gym',col:43, row:27, floors:2, color:0xf97316, available:false, href:'/buildings/gym'       },
-]
-const BMAP = new Map(BUILDINGS.map(b => [`${b.col},${b.row}`, b]))
-
-// ── V2 cast helper for fillPoints ─────────────────────────────────────────────
-type V2 = { x:number; y:number }
-function fp(pts: V2[]): Phaser.Math.Vector2[] { return pts as unknown as Phaser.Math.Vector2[] }
-
-// ── Draw: flat iso diamond ────────────────────────────────────────────────────
-function diamond(g: Phaser.GameObjects.Graphics, sx: number, sy: number, col: number, alpha = 1) {
-  g.fillStyle(col, alpha)
-  g.fillPoints(fp([{ x:sx, y:sy-HH }, { x:sx+HW, y:sy }, { x:sx, y:sy+HH }, { x:sx-HW, y:sy }]), true)
-}
-
-// ── Draw: iso cube (three visible faces) ──────────────────────────────────────
-function cube(g: Phaser.GameObjects.Graphics, sx: number, sy: number, H: number,
-              topCol: number, rightCol: number, leftCol: number) {
-  // SE face
-  g.fillStyle(rightCol)
-  g.fillPoints(fp([{ x:sx+HW, y:sy-H }, { x:sx, y:sy+HH-H }, { x:sx, y:sy+HH }, { x:sx+HW, y:sy }]), true)
-  // SW face
-  g.fillStyle(leftCol)
-  g.fillPoints(fp([{ x:sx-HW, y:sy-H }, { x:sx, y:sy+HH-H }, { x:sx, y:sy+HH }, { x:sx-HW, y:sy }]), true)
-  // Top face
-  g.fillStyle(topCol)
-  g.fillPoints(fp([{ x:sx, y:sy-HH-H }, { x:sx+HW, y:sy-H }, { x:sx, y:sy+HH-H }, { x:sx-HW, y:sy-H }]), true)
-}
-
-// ── Draw: windows on SE parallelogram face ────────────────────────────────────
-// Point on SE face at param (u ∈ [0,1] horiz, v ∈ [0,1] vert-from-bottom):
-//   wx = sx + u*HW,  wy = sy + HH*(1-u) - v*H
-function winSE(g: Phaser.GameObjects.Graphics, sx: number, sy: number, H: number, col: number) {
-  const nC = Math.max(2, Math.floor(HW / 16))
-  const nR = Math.max(1, Math.floor(H / 16))
-  g.fillStyle(col, 0.72)
-  for (let r = 0; r < nR; r++) {
-    for (let c = 0; c < nC; c++) {
-      const u = (c + 0.5) / nC
-      const v = (r + 0.7) / nR
-      const wx = sx + u * HW
-      const wy = sy + HH * (1 - u) - v * H
-      g.fillRect(wx - 2, wy - 3, 4, 5)
-    }
-  }
-}
-
-// ── Draw: windows on SW parallelogram face ────────────────────────────────────
-// wx = sx - HW*(1-u),  wy = sy - v*H + u*HH
-function winSW(g: Phaser.GameObjects.Graphics, sx: number, sy: number, H: number, col: number) {
-  const nC = Math.max(2, Math.floor(HW / 16))
-  const nR = Math.max(1, Math.floor(H / 16))
-  g.fillStyle(col, 0.65)
-  for (let r = 0; r < nR; r++) {
-    for (let c = 0; c < nC; c++) {
-      const u = (c + 0.5) / nC
-      const v = (r + 0.7) / nR
-      const wx = sx - HW * (1 - u)
-      const wy = sy - v * H + u * HH
-      g.fillRect(wx - 2, wy - 3, 4, 5)
-    }
-  }
-}
-
-
-// ── Draw: street lamp ─────────────────────────────────────────────────────────
-function streetLamp(g: Phaser.GameObjects.Graphics, sx: number, sy: number) {
-  // Ground halo
-  g.fillStyle(0xffcc44, 0.07)
-  g.fillEllipse(sx, sy + 4, 28, 12)
-  // Pole
-  g.fillStyle(0x8888aa)
-  g.fillRect(sx - 1, sy - 22, 2, 22)
-  // Arm extending toward viewer (SE direction)
-  g.fillStyle(0x8888aa)
-  g.fillRect(sx, sy - 22, 6, 2)
-  // Lamp head
-  g.fillStyle(0x555577)
-  g.fillRect(sx + 3, sy - 24, 8, 4)
-  // Warm glow
-  g.fillStyle(0xffdd88, 0.65)
-  g.fillEllipse(sx + 7, sy - 22, 6, 4)
-  // Glow bloom
-  g.fillStyle(0xffdd88, 0.12)
-  g.fillEllipse(sx + 7, sy - 20, 18, 14)
-}
-
-// ═════════════════════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════════════════════
 export class CityScene extends Phaser.Scene {
-  private playerContainer!: Phaser.GameObjects.Container
-  private playerGfx!:       Phaser.GameObjects.Graphics
-  private shadowGfx!:       Phaser.GameObjects.Graphics
-  private playerSx = 0
-  private playerSy = 0
+  private pX = 21.5 * TW
+  private pY = 12.5 * TW
+  private pDir: 'down' | 'up' | 'left' | 'right' = 'down'
+  private isMoving = false
+  private walkFrame = 0
+  private walkTimer = 0
+
+  private playerSprite!: Phaser.GameObjects.Image
+  private nameText!:     Phaser.GameObjects.Text
+  private entryGfx!:     Phaser.GameObjects.Graphics
+  private promptBg!:     Phaser.GameObjects.Graphics
+  private promptText!:   Phaser.GameObjects.Text
+
   private keys!: {
-    w: Phaser.Input.Keyboard.Key; s: Phaser.Input.Keyboard.Key
-    a: Phaser.Input.Keyboard.Key; d: Phaser.Input.Keyboard.Key
+    W: Phaser.Input.Keyboard.Key; S: Phaser.Input.Keyboard.Key
+    A: Phaser.Input.Keyboard.Key; D: Phaser.Input.Keyboard.Key
     up: Phaser.Input.Keyboard.Key; down: Phaser.Input.Keyboard.Key
     left: Phaser.Input.Keyboard.Key; right: Phaser.Input.Keyboard.Key
-    e: Phaser.Input.Keyboard.Key
+    E: Phaser.Input.Keyboard.Key
   }
-  private displayName   = 'You'
+  private displayName  = 'You'
   private nearBuilding: Bldg | null = null
-  private promptText!:  Phaser.GameObjects.Text
-  private walkTick      = 0
-  private lastPosEmit   = 0
-  private facingRight   = true
+  private lastPosEmit  = 0
   private teleportHandler!: EventListener
 
   constructor() { super({ key: 'CityScene' }) }
-  init(data: { displayName?: string }) { this.displayName = data.displayName ?? 'You' }
+  init(data: { displayName?: string }) { this.displayName = data?.displayName ?? 'You' }
 
-  // ── Preload ───────────────────────────────────────────────────────────────
-  preload() {
-    const p = '/sprites/city/'
-    this.load.image('tile-grass',          p + 'grass.png')
-    this.load.image('tile-water',          p + 'water.png')
-    this.load.image('tile-beach',          p + 'beach.png')
-    this.load.image('tile-road',           p + 'road.png')
-    this.load.image('tile-road-ns',        p + 'road-ns.png')
-    this.load.image('tile-road-ew',        p + 'road-ew.png')
-    this.load.image('tile-inter',          p + 'crossroad.png')
-    this.load.image('tile-dirt',           p + 'dirt.png')
-    this.load.image('tile-lot',            p + 'lot.png')
-    this.load.image('tree-tall',           p + 'tree-tall.png')
-    this.load.image('tree-short',          p + 'tree-short.png')
-    this.load.image('tree-conifer',        p + 'tree-conifer.png')
-    this.load.image('tree-conifer-short',  p + 'tree-conifer-short.png')
-  }
+  preload() {}
 
-  // ── Create ────────────────────────────────────────────────────────────────
   create() {
-    this.cameras.main.setBackgroundColor(0x0d1520)
-    this.drawCity()
+    this.cameras.main.setBackgroundColor(0x0a1628)
+    this.buildTilesetTexture()
+    this.createTilemap()
+    this.bakeStaticLayer()
+    this.generatePlayerTextures()
     this.createPlayer()
+    this.createEntryGfx()
+    this.createPrompt()
     this.setupCamera()
     this.setupKeys()
-    this.createPrompt()
 
     this.teleportHandler = (e: Event) => {
-      const { x, y } = (e as CustomEvent<{x:number;y:number}>).detail
-      this.playerSx = x; this.playerSy = y
-      this.playerContainer.x = x; this.playerContainer.y = y
+      const { x, y } = (e as CustomEvent<{ x: number; y: number }>).detail
+      this.pX = x; this.pY = y
       this.cameras.main.flash(200, 0, 0, 0, false)
     }
     window.addEventListener('realm:teleport', this.teleportHandler)
   }
 
-  // ── Draw city (painter's algo) ─────────────────────────────────────────────
-  private drawCity() {
-    for (let d = 0; d <= GC + GR - 2; d++) {
-      const gB = this.add.graphics().setDepth(d * 4 + 1)  // buildings
-      const gW = this.add.graphics().setDepth(d * 4 + 2)  // windows / decor / lamps
+  // ── Tileset texture (12 tiles × 48px on a canvas) ─────────────────────────
+  private buildTilesetTexture() {
+    const canvas = document.createElement('canvas')
+    canvas.width  = NT * TW
+    canvas.height = TW
+    const ctx = canvas.getContext('2d')!
 
-      for (let col = Math.max(0, d - GR + 1); col <= Math.min(d, GC - 1); col++) {
-        const row = d - col
-        const { sx, sy } = ts(col, row)
-        const type = GRID[row]?.[col]
-        if (!type) continue
-        this.renderGround(sx, sy, col, row, type, d * 4)
-        this.renderBuilding(gB, gW, sx, sy, col, row, type)
-      }
-    }
-    this.addNeighbourhoodLabels()
+    const tiles: Array<{ color: string; fn?: (ox: number) => void }> = [
+      {  // 0 GRASS
+        color: '#3d7a4a',
+        fn: ox => {
+          ctx.fillStyle = 'rgba(0,0,0,0.1)'
+          ;[[ox+10,8],[ox+28,18],[ox+18,32],[ox+38,24],[ox+6,38]].forEach(([x,y]) => ctx.fillRect(x,y,3,3))
+          ctx.fillStyle = 'rgba(255,255,255,0.05)'
+          ;[[ox+20,10],[ox+36,30]].forEach(([x,y]) => ctx.fillRect(x,y,4,2))
+        },
+      },
+      {  // 1 ROAD_H
+        color: '#252525',
+        fn: ox => {
+          ctx.fillStyle = 'rgba(255,255,255,0.12)'
+          ctx.fillRect(ox, 0, TW, 2)
+          ctx.fillRect(ox, TW - 2, TW, 2)
+          ctx.fillStyle = 'rgba(245,200,24,0.75)'
+          ctx.fillRect(ox + 4, TW / 2 - 1, TW - 8, 2)
+        },
+      },
+      {  // 2 ROAD_V
+        color: '#252525',
+        fn: ox => {
+          ctx.fillStyle = 'rgba(255,255,255,0.12)'
+          ctx.fillRect(ox, 0, 2, TW)
+          ctx.fillRect(ox + TW - 2, 0, 2, TW)
+          ctx.fillStyle = 'rgba(245,200,24,0.75)'
+          ctx.fillRect(ox + TW / 2 - 1, 4, 2, TW - 8)
+        },
+      },
+      {  // 3 INTER
+        color: '#1e1e1e',
+        fn: ox => {
+          ctx.fillStyle = 'rgba(255,255,255,0.1)'
+          for (let i = 0; i < 3; i++) {
+            ctx.fillRect(ox + 4 + i * 6, 2,       3, 7)
+            ctx.fillRect(ox + 4 + i * 6, TW - 9,  3, 7)
+            ctx.fillRect(ox + 2,          4 + i*6, 7, 3)
+            ctx.fillRect(ox + TW - 9,     4 + i*6, 7, 3)
+          }
+        },
+      },
+      {  // 4 WATER
+        color: '#1a5fa0',
+        fn: ox => {
+          ctx.fillStyle = 'rgba(80,160,220,0.35)'
+          ctx.fillRect(ox + 4, 10, TW - 8, 2)
+          ctx.fillRect(ox + 8, 26, TW - 16, 2)
+          ctx.fillRect(ox + 4, 38, TW - 8, 2)
+        },
+      },
+      {  // 5 BEACH
+        color: '#c8a43a',
+        fn: ox => {
+          ctx.fillStyle = 'rgba(220,180,60,0.4)'
+          ;[[ox+8,10],[ox+22,20],[ox+36,8],[ox+14,34],[ox+32,38],[ox+6,26]].forEach(([x,y]) => {
+            ctx.beginPath()
+            ctx.ellipse(x, y, 3, 2, 0, 0, Math.PI * 2)
+            ctx.fill()
+          })
+        },
+      },
+      {  // 6 PLAZA
+        color: '#7a7a8a',
+        fn: ox => {
+          ctx.fillStyle = 'rgba(80,80,100,0.5)'
+          ctx.fillRect(ox, TW / 2, TW, 1)
+          ctx.fillRect(ox + TW / 2, 0, 1, TW)
+          ctx.fillStyle = 'rgba(140,140,160,0.2)'
+          ctx.fillRect(ox, 0, TW, 1)
+          ctx.fillRect(ox, 0, 1, TW)
+        },
+      },
+      { color: '#455060' },  // 7 COM
+      { color: '#1c2740' },  // 8 DT
+      {  // 9 DOCK
+        color: '#5c3a1e',
+        fn: ox => {
+          ctx.fillStyle = 'rgba(40,24,10,0.5)'
+          for (let y = 8; y < TW; y += 10) ctx.fillRect(ox, y, TW, 1)
+          ctx.fillStyle = 'rgba(120,80,40,0.25)'
+          ctx.fillRect(ox + TW / 2, 0, 1, TW)
+        },
+      },
+      { color: '#0d3d7a' },  // 10 LAKE
+      {  // 11 PARK
+        color: '#2d6e3e',
+        fn: ox => {
+          ctx.fillStyle = 'rgba(0,0,0,0.12)'
+          ;[[ox+12,6],[ox+30,16],[ox+8,28],[ox+36,32]].forEach(([x,y]) => ctx.fillRect(x,y,3,3))
+        },
+      },
+    ]
+
+    tiles.forEach((t, i) => {
+      const ox = i * TW
+      ctx.fillStyle = t.color
+      ctx.fillRect(ox, 0, TW, TW)
+      t.fn?.(ox)
+    })
+
+    this.textures.addCanvas('tileset', canvas)
   }
 
-  // ── Ground (sprite-based) ─────────────────────────────────────────────────
-  // Tiles are 100×65 RGBA PNGs (Kenney Isometric Roads pack).
-  // Diamond top apex = sprite pixel (50,0). We place at (sx, sy-HH) with
-  // origin(0.5,0) so the apex lands exactly on the iso top-of-tile point.
-  private renderGround(sx: number, sy: number, col: number, row: number, type: T, depth: number) {
-    let key: string
-    switch (type) {
-      case 'water': key = 'tile-water'; break
-      case 'beach': key = 'tile-beach'; break
-      case 'park':  key = 'tile-grass'; break
-      case 'plaza': key = 'tile-lot';   break
-      case 'road': {
-        // col=8/16/24/32/40 run SW → EW sprite; row roads run SE → NS sprite
-        const isColRoad = col === 8 || col === 16 || col === 24 || col === 32 || col === 40
-        key = isColRoad ? 'tile-road-ew' : 'tile-road-ns'
-        break
-      }
-      case 'inter': key = 'tile-inter'; break
-      case 'res':   key = 'tile-grass'; break
-      case 'com':   key = 'tile-grass'; break
-      case 'dt':    key = 'tile-road';  break
-      case 'dock':  key = 'tile-dirt';  break
-      case 'lake':  key = 'tile-water'; break
-      default:      key = 'tile-grass'
-    }
-    this.add.image(sx, sy - HH, key).setOrigin(0.5, 0).setDepth(depth)
+  // ── Tilemap ────────────────────────────────────────────────────────────────
+  private createTilemap() {
+    const map = this.make.tilemap({ data: GRID_DATA, tileWidth: TW, tileHeight: TW })
+    const ts  = map.addTilesetImage('tileset', 'tileset', TW, TW, 0, 0)
+    if (!ts) return
+    map.createLayer(0, ts, 0, 0)
   }
 
-  // ── Buildings ─────────────────────────────────────────────────────────────
-  private renderBuilding(
-    gB: Phaser.GameObjects.Graphics, gW: Phaser.GameObjects.Graphics,
-    sx: number, sy: number, col: number, row: number, type: T
-  ) {
-    const named = BMAP.get(`${col},${row}`)
-    if (named) { this.drawNamedBuilding(gB, gW, sx, sy, named); return }
+  // ── Static buildings + trees baked into one RenderTexture ─────────────────
+  private bakeStaticLayer() {
+    const g = this.make.graphics({}, false)
 
-    if (type === 'park') {
-      const rng  = lcg(col * 37 + row * 23)
-      const d    = (col + row) * 4 + 0.5
-      const keys = ['tree-tall', 'tree-conifer', 'tree-conifer-short', 'tree-short']
-      if (rng() > 0.35) {
-        const key = keys[Math.floor(rng() * keys.length)]
-        const ox  = (rng() - 0.5) * HW * 0.6
-        const oy  = (rng() - 0.5) * HH * 0.6
-        this.add.image(sx + ox, sy + oy, key).setOrigin(0.5, 1).setScale(3.5).setDepth(d)
+    // Seeded RNG for tree placement
+    let seed = 0xdeadbeef
+    const rng = () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 0x100000000 }
+
+    // Trees on park/grass tiles
+    for (let r = 0; r < GR; r++) {
+      for (let c = 0; c < GC; c++) {
+        const ti = GRID_DATA[r][c]
+        if (ti !== TI.PARK && ti !== TI.GRASS) continue
+        if (BLOCKED.has(`${c},${r}`)) continue
+        if (rng() > 0.16) continue
+        const tx = c * TW + TW / 2, ty = r * TW + TW / 2
+        g.fillStyle(0x000000, 0.18)
+        g.fillEllipse(tx + 3, ty + 7, 24, 10)
+        g.fillStyle(ti === TI.PARK ? 0x1e5c2a : 0x277040)
+        g.fillCircle(tx, ty, 13)
+        g.fillStyle(ti === TI.PARK ? 0x267a35 : 0x30944a)
+        g.fillCircle(tx - 2, ty - 2, 9)
+        g.fillStyle(0x3aaa58, 0.55)
+        g.fillCircle(tx - 3, ty - 4, 5)
+        g.fillStyle(0x4a2e14)
+        g.fillRect(tx - 2, ty + 9, 4, 6)
       }
-      if (rng() > 0.55) {
-        const key = keys[Math.floor(rng() * keys.length)]
-        const ox  = (rng() - 0.5) * HW * 0.5
-        const oy  = (rng() - 0.5) * HH * 0.5
-        this.add.image(sx + ox, sy + oy, key).setOrigin(0.5, 1).setScale(2.8).setDepth(d)
-      }
-      return
     }
 
-    // Street lamps every 3rd tile along roads
-    if (type === 'road' || type === 'dock') {
-      if (type === 'road') {
-        const nsRoad = col === 8 || col === 16 || col === 24 || col === 32 || col === 40
-        if (nsRoad && row % 3 === 1) {
-          streetLamp(gW, sx + HW * 0.55, sy + HH * 0.3)
-        } else if (!nsRoad && col % 3 === 1) {
-          streetLamp(gW, sx - HW * 0.15, sy - HH * 0.7)
+    // Buildings
+    for (const b of BUILDINGS) {
+      if (b.kind) {
+        this.drawSeatZone(g, b)
+      } else {
+        this.drawBuilding(g, b)
+      }
+    }
+
+    const rt = this.add.renderTexture(0, 0, WORLD_W, WORLD_H)
+    rt.draw(g, 0, 0)
+    rt.setDepth(2)
+    g.destroy()
+  }
+
+  private drawBuilding(g: Phaser.GameObjects.Graphics, b: Bldg) {
+    const bw = (b.w ?? 2) * TW - 6
+    const bh = (b.h ?? 2) * TW - 6
+    const bx = b.col * TW + 3
+    const by = b.row * TW + 3
+    const c  = b.color
+
+    // Shadow
+    g.fillStyle(0x000000, 0.3)
+    g.fillRoundedRect(bx + 5, by + 5, bw, bh, 5)
+    // Body
+    g.fillStyle(dk(c, 0.65))
+    g.fillRoundedRect(bx, by, bw, bh, 5)
+    // Roof face
+    g.fillStyle(c)
+    g.fillRoundedRect(bx, by, bw, bh - 5, 5)
+    // Roof highlight
+    g.fillStyle(lk(c, 1.5), 0.7)
+    g.fillRoundedRect(bx + 3, by + 3, bw - 6, 5, 2)
+
+    // Windows
+    if (bw >= 44 && bh >= 32) {
+      const cols = Math.max(1, Math.floor((bw - 12) / 20))
+      const rows = Math.max(1, Math.floor((bh - 18) / 18))
+      for (let wc = 0; wc < cols; wc++) {
+        for (let wr = 0; wr < rows; wr++) {
+          const wx = bx + 8 + wc * 20
+          const wy = by + 12 + wr * 18
+          if (wx + 10 > bx + bw - 4 || wy + 8 > by + bh - 6) continue
+          g.fillStyle(0x000000, 0.25)
+          g.fillRoundedRect(wx, wy, 12, 8, 1)
+          g.fillStyle(0xb8deff, 0.75)
+          g.fillRoundedRect(wx + 1, wy + 1, 10, 6, 1)
         }
       }
-      return
     }
 
-    if (type !== 'res' && type !== 'com' && type !== 'dt') return
-
-    const rng = lcg(col * 37 + row * 19)
-
-    let floors: number, roofCol: number, winCol: number
-    if (type === 'res') {
-      floors = 1 + Math.floor(rng() * 2)         // 1–2 floors
-      roofCol = [0x2a2018, 0x241e18, 0x2e2820, 0x261e20][Math.floor(rng() * 4)]
-      winCol  = 0xffcc66
-    } else if (type === 'com') {
-      floors = 2 + Math.floor(rng() * 3)         // 2–4 floors
-      roofCol = [0x1a2434, 0x1c2838, 0x162030, 0x202a3c][Math.floor(rng() * 4)]
-      winCol  = 0x88ccff
-    } else {
-      floors = 4 + Math.floor(rng() * 6)         // 4–9 floors
-      roofCol = [0x0e1828, 0x0c1622, 0x101a2c, 0x0a1420][Math.floor(rng() * 4)]
-      winCol  = 0xaaddff
+    // Name label
+    if (b.name.length < 18) {
+      // (text added as proper game object below in scene, not in RT)
     }
-
-    const H = floors * FH
-    cube(gB, sx, sy, H, roofCol, dk(roofCol, 0.55), dk(roofCol, 0.38))
-    winSE(gW, sx, sy, H, winCol)
-    winSW(gW, sx, sy, H, winCol)
-
-    // Roof accent (thin lighter stripe)
-    gB.lineStyle(1, lk(roofCol, 1.8), 0.5)
-    gB.lineBetween(sx - HW, sy - H, sx, sy - HH - H)
-    gB.lineBetween(sx, sy - HH - H, sx + HW, sy - H)
   }
 
-  // ── Bench (8-person spatial audio zone) ───────────────────────────────────
-  private drawBench(gB: Phaser.GameObjects.Graphics, sx: number, sy: number, b: Bldg) {
-    const dep = (b.col + b.row) * 4 + 2
-    // Soft zone ring
-    gB.lineStyle(1.5, b.color, 0.28)
-    gB.strokeEllipse(sx, sy + HH * 0.4, HW * 1.2, HH * 1.2)
-    // Shadow
-    gB.fillStyle(0x000000, 0.15)
-    gB.fillEllipse(sx + 3, sy + 8, 30, 10)
-    // Bench seat
-    gB.fillStyle(0x8B5E3C)
-    gB.fillPoints(fp([{ x:sx-13, y:sy-2 }, { x:sx+14, y:sy-7 }, { x:sx+14, y:sy-3 }, { x:sx-13, y:sy+2 }]), true)
-    // Bench back
-    gB.fillPoints(fp([{ x:sx-13, y:sy-8 }, { x:sx+14, y:sy-13 }, { x:sx+14, y:sy-10 }, { x:sx-13, y:sy-5 }]), true)
-    // Legs
-    gB.fillStyle(0x6b3d1e)
-    gB.fillRect(sx - 11, sy + 2, 3, 5)
-    gB.fillRect(sx + 10, sy - 3, 3, 5)
-    // Seat-count dots
-    gB.fillStyle(0xffffff, 0.35)
-    for (let i = 0; i < 4; i++) gB.fillCircle(sx - 9 + i * 7, sy - 14, 1.8)
-    for (let i = 0; i < 4; i++) gB.fillCircle(sx - 9 + i * 7, sy - 5, 1.8)
-    this.add.text(sx, sy - 18, b.name, {
-      fontSize: '6px', color: `#${b.color.toString(16).padStart(6,'0')}`,
-      backgroundColor: '#00000099', padding: { x:3, y:1 },
-    }).setOrigin(0.5, 1).setDepth(dep)
-  }
+  private drawSeatZone(g: Phaser.GameObjects.Graphics, b: Bldg) {
+    const cx = b.col * TW + TW / 2
+    const cy = b.row * TW + TW / 2
 
-  // ── Boat (50-person zone floating on water) ───────────────────────────────
-  private drawBoat(gB: Phaser.GameObjects.Graphics, sx: number, sy: number, b: Bldg) {
-    const dep = (b.col + b.row) * 4 + 2
-    // Water ripple
-    gB.lineStyle(1, 0x4fc3f7, 0.25)
-    gB.strokeEllipse(sx, sy + 8, HW * 2.0, HH * 1.2)
-    // Hull (dark) – iso parallelogram
-    gB.fillStyle(dk(b.color, 0.45))
-    gB.fillPoints(fp([
-      { x:sx-HW*0.80, y:sy+HH*0.20 }, { x:sx+HW*0.80, y:sy-HH*0.20 },
-      { x:sx+HW*0.65, y:sy+HH*0.65 }, { x:sx-HW*0.65, y:sy+HH*0.65 },
-    ]), true)
-    // Deck (lighter)
-    gB.fillStyle(lk(b.color, 0.75))
-    gB.fillPoints(fp([
-      { x:sx, y:sy-HH*0.90 }, { x:sx+HW*0.80, y:sy-HH*0.20 },
-      { x:sx, y:sy+HH*0.40 }, { x:sx-HW*0.80, y:sy-HH*0.20 },
-    ]), true)
-    // Cabin
-    gB.fillStyle(lk(b.color, 0.55))
-    gB.fillRect(sx - 11, sy - 28, 22, 14)
-    gB.lineStyle(0.5, 0xffffff, 0.25)
-    gB.strokeRect(sx - 11, sy - 28, 22, 14)
-    // Mast
-    gB.fillStyle(0x8B4513)
-    gB.fillRect(sx - 1, sy - 54, 2, 27)
-    // Flag
-    gB.fillStyle(b.color, 0.9)
-    gB.fillTriangle(sx + 1, sy - 54, sx + 13, sy - 47, sx + 1, sy - 40)
-    this.add.text(sx, sy - 60, `⚓ ${b.name}`, {
-      fontSize: '7px', color: '#ffffff', fontStyle: 'bold',
-      backgroundColor: '#00000099', padding: { x:4, y:2 }, align: 'center',
-    }).setOrigin(0.5, 1).setDepth(dep)
-  }
-
-  // ── Outdoor table (8-person plaza zone) ───────────────────────────────────
-  private drawTable(gB: Phaser.GameObjects.Graphics, sx: number, sy: number, b: Bldg) {
-    const dep = (b.col + b.row) * 4 + 2
-    // Zone shadow
-    gB.fillStyle(0x000000, 0.12)
-    gB.fillEllipse(sx + 3, sy + 5, 34, 14)
-    // Zone ring
-    gB.lineStyle(1, b.color, 0.28)
-    gB.strokeEllipse(sx, sy, HW * 0.9, HH * 0.9)
-    // Table top
-    gB.fillStyle(0xdeb887, 0.9)
-    gB.fillEllipse(sx, sy - 7, 18, 9)
-    gB.fillStyle(0x8B6914, 0.7)
-    gB.fillEllipse(sx + 1, sy - 5, 18, 9)
-    // Chairs (8 evenly around table)
-    gB.fillStyle(0xb5835a)
-    const chairR = 14, chairH = 6
-    for (let i = 0; i < 8; i++) {
-      const ang = (i / 8) * Math.PI * 2
-      gB.fillRect(sx + Math.cos(ang) * chairR - 2, sy + Math.sin(ang) * chairH - 2 - 6, 4, 4)
+    if (b.kind === 'bench') {
+      g.lineStyle(1, b.color, 0.22)
+      g.strokeCircle(cx, cy, ENT_R * 0.55)
+      g.fillStyle(0x7a5010)
+      g.fillRoundedRect(cx - 16, cy - 5, 32, 10, 3)
+      g.fillStyle(b.color, 0.5)
+      g.fillRoundedRect(cx - 16, cy - 6, 32, 4, 2)
+    } else if (b.kind === 'table') {
+      g.lineStyle(1, b.color, 0.22)
+      g.strokeCircle(cx, cy, ENT_R * 0.55)
+      g.fillStyle(0xb89450)
+      g.fillEllipse(cx, cy, 26, 18)
+      g.fillStyle(0x9a7838)
+      g.fillEllipse(cx, cy, 20, 14)
+    } else if (b.kind === 'boat') {
+      g.lineStyle(2, 0x3080c0, 0.25)
+      g.strokeEllipse(cx, cy, 76, 44)
+      g.fillStyle(b.color)
+      g.fillEllipse(cx, cy, 48, 24)
+      g.fillStyle(0xffffff, 0.45)
+      g.fillEllipse(cx - 4, cy - 3, 24, 12)
+      // Mast
+      g.fillStyle(0x8a6040)
+      g.fillRect(cx - 1, cy - 24, 2, 24)
     }
-    this.add.text(sx, sy - 16, b.name, {
-      fontSize: '6px', color: `#${b.color.toString(16).padStart(6,'0')}`,
-      backgroundColor: '#00000088', padding: { x:3, y:1 },
-    }).setOrigin(0.5, 1).setDepth(dep)
   }
 
-  // ── Named building ─────────────────────────────────────────────────────────
-  private drawNamedBuilding(
-    gB: Phaser.GameObjects.Graphics, gW: Phaser.GameObjects.Graphics,
-    sx: number, sy: number, b: Bldg
+  // ── Player textures (generated once, 4 dir × 2 walk frames) ───────────────
+  private generatePlayerTextures() {
+    const dirs = ['down', 'up', 'left', 'right'] as const
+    for (const dir of dirs) {
+      for (const frame of [0, 1] as const) {
+        const g = this.make.graphics({}, false)
+        this.drawCharacter(g, dir, frame)
+        g.generateTexture(`player-${dir}-${frame}`, 28, 40)
+        g.destroy()
+      }
+    }
+  }
+
+  private drawCharacter(
+    g: Phaser.GameObjects.Graphics,
+    dir: 'down' | 'up' | 'left' | 'right',
+    frame: 0 | 1
   ) {
-    // Dispatch special kinds
-    if (b.kind === 'bench') { this.drawBench(gB, sx, sy, b); return }
-    if (b.kind === 'boat')  { this.drawBoat(gB, sx, sy, b); return }
-    if (b.kind === 'table') { this.drawTable(gB, sx, sy, b); return }
+    const cx = 14, cy = 28  // center of the 28×40 canvas (waist level)
 
-    const H = b.floors * FH
-    const topCol   = b.available ? lk(b.color, 0.55) : 0x2a3040
-    const rightCol = dk(topCol, 0.55)
-    const leftCol  = dk(topCol, 0.38)
+    // Ground shadow
+    g.fillStyle(0x000000, 0.2)
+    g.fillEllipse(cx + 2, cy + 10, 22, 8)
 
-    // Drop shadow under building
-    gB.fillStyle(0x000000, 0.35)
-    gB.fillPoints(fp([
-      { x:sx, y:sy+HH+4 }, { x:sx+HW+4, y:sy+4 },
-      { x:sx+4, y:sy-HH+4+H*0.1 }, { x:sx-HW+4, y:sy+4 },
-    ]), true)
-
-    cube(gB, sx, sy, H, topCol, rightCol, leftCol)
-
-    // Window lights on both faces
-    const winBright = b.available ? lk(b.color, 2.2) : 0x9999bb
-    winSE(gW, sx, sy, H, winBright)
-    winSW(gW, sx, sy, H, winBright)
-
-    // Glowing top edge stripe
-    if (b.available) {
-      gB.lineStyle(2, b.color, 0.85)
-      gB.lineBetween(sx - HW, sy - H, sx, sy - HH - H)
-      gB.lineBetween(sx, sy - HH - H, sx + HW, sy - H)
-      // Small roof glow
-      gB.fillStyle(b.color, 0.15)
-      gB.fillPoints(fp([
-        { x:sx, y:sy-HH-H }, { x:sx+HW, y:sy-H }, { x:sx, y:sy+HH-H }, { x:sx-HW, y:sy-H },
-      ]), true)
-    }
-
-    // Entrance door (SE face, center-bottom)
-    const doorU = 0.5
-    const doorSx = sx + doorU * HW
-    const doorSy = sy + HH * (1 - doorU)
-    gB.fillStyle(b.available ? b.color : 0x404060, 0.9)
-    gB.fillRect(doorSx - 3, doorSy - 10, 6, 10)
-    gB.lineStyle(0.5, 0xffffff, 0.3)
-    gB.strokeRect(doorSx - 3, doorSy - 10, 6, 10)
-
-    const depth = (b.col + b.row) * 4 + 3
-    if (b.available) {
-      const badge = this.add.text(sx, sy - HH - H - 18, '● OPEN', {
-        fontSize: '7px', color: `#${b.color.toString(16).padStart(6,'0')}`,
-        fontStyle: 'bold', backgroundColor: '#ffffffdd', padding: { x:5, y:2 },
-      }).setOrigin(0.5, 1).setDepth(depth + 0.2)
-      this.tweens.add({ targets: badge, alpha: { from:1, to:0.25 }, duration:1600, yoyo:true, repeat:-1 })
-    }
-    this.add.text(sx, sy - HH - H - 3, b.name, {
-      fontSize: '8px', color: b.available ? '#ffffff' : '#888899',
-      fontStyle: 'bold', backgroundColor: '#00000099', padding: { x:4, y:2 },
-    }).setOrigin(0.5, 1).setDepth(depth + 0.1)
-
-    // Flanking trees (sprite-based)
-    const td = (b.col + b.row) * 4 + 0.5
-    this.add.image(sx + HW * 0.65, sy + HH * 0.3, 'tree-conifer').setOrigin(0.5, 1).setScale(3.2).setDepth(td)
-    this.add.image(sx - HW * 0.7,  sy + HH * 0.3, 'tree-tall').setOrigin(0.5, 1).setScale(3.2).setDepth(td)
-  }
-
-  // ── Neighbourhood labels ──────────────────────────────────────────────────
-  private addNeighbourhoodLabels() {
-    const L = [
-      { t:'FINANCIAL DISTRICT', col:23, row:11 },
-      { t:'MARINA & DOCKS',     col:11, row: 7 },
-      { t:'CENTRAL PARK',       col:13, row:20 },
-      { t:'PARK MEADOW',        col:19, row:20 },
-      { t:'HOSPITAL ROW',       col:36, row:12 },
-      { t:'LIBRARY DISTRICT',   col:43, row:12 },
-      { t:'RANCH ESTATES NORTH',col:23, row: 3 },
-      { t:'RANCH ESTATES SOUTH',col:14, row:28 },
-      { t:'THE MALL',           col:27, row:28 },
-      { t:'CITY GOVERNMENT',    col:36, row:28 },
-      { t:'UNIVERSITY QUARTER', col:44, row:21 },
-      { t:'PACIFIC OCEAN',      col: 3, row:14 },
-      { t:'NORTH BEACH',        col: 3, row:36 },
-    ]
-    for (const l of L) {
-      const { sx, sy } = ts(l.col, l.row)
-      this.add.text(sx, sy - HH, l.t, {
-        fontSize: '8px', color: '#ffffff1a', fontStyle: 'bold', letterSpacing: 3,
-      }).setOrigin(0.5).setDepth((l.col + l.row) * 4 + 0.5)
-    }
-  }
-
-  // ── Player ────────────────────────────────────────────────────────────────
-  private createPlayer() {
-    this.shadowGfx = this.add.graphics()
-    this.playerGfx = this.add.graphics()
-    this.drawPlayerSprite()
-
-    const nameLabel = this.add.text(0, -52, this.displayName, {
-      fontSize: '8px', color: '#ffffffcc', fontStyle: 'bold',
-      backgroundColor: '#000000aa', padding: { x:4, y:2 },
-    }).setOrigin(0.5, 1)
-
-    const spawn = ts(21, 12)  // financial district
-    this.playerSx = spawn.sx
-    this.playerSy = spawn.sy
-    this.playerContainer = this.add.container(this.playerSx, this.playerSy, [this.shadowGfx, this.playerGfx, nameLabel])
-    this.playerContainer.setDepth(9999)
-  }
-
-  private drawPlayerSprite() {
-    const g = this.playerGfx
-    const s = this.shadowGfx
-    const fr = this.facingRight
-
-    s.clear()
-    g.clear()
-
-    // Ground shadow (isometric ellipse)
-    s.fillStyle(0x000000, 0.28)
-    s.fillEllipse(fr ? 2 : -2, 12, 26, 10)
-
-    // ── Legs ──
-    g.fillStyle(0x1c2a60)   // dark navy jeans
-    // left leg
-    g.fillRoundedRect(fr ? -8 : 1,  3, 6, 12, 2)
-    // right leg
-    g.fillRoundedRect(fr ?  1 : -7, 3, 6, 12, 2)
-    // shoes
-    g.fillStyle(0xeeeeee)
-    g.fillRoundedRect(fr ? -9 : 2,  13, 7, 4, 1)
-    g.fillRoundedRect(fr ?  0 : -8, 13, 7, 4, 1)
-
-    // ── Body / jacket ──
-    const bodyCol = 0x4338ca   // indigo jacket
-    g.fillStyle(bodyCol)
-    g.fillRoundedRect(-9, -13, 18, 17, 3)
-    // collar / lapel
-    g.fillStyle(lk(bodyCol, 0.7))
-    g.fillTriangle(fr ? -2 : 0, -13, fr ? 2 : -2, -13, 0, -7)
-
-    // ── Arms ──
-    g.fillStyle(bodyCol)
-    if (fr) {
-      g.fillRoundedRect(-14, -12, 5, 13, 2)   // left arm (back)
-      g.fillRoundedRect(  9, -12, 5, 13, 2)   // right arm (front)
+    // Legs
+    const legShift = frame === 1 ? 4 : -4
+    const isLR = dir === 'left' || dir === 'right'
+    g.fillStyle(0x2a4a8a)
+    if (!isLR) {
+      g.fillRect(cx - 7, cy, 6, 10 + legShift)
+      g.fillRect(cx + 1, cy, 6, 10 - legShift)
+      g.fillStyle(0x1a1a2e)
+      g.fillRoundedRect(cx - 8, cy + 8 + legShift, 7, 4, 2)
+      g.fillRoundedRect(cx + 1, cy + 8 - legShift, 7, 4, 2)
     } else {
-      g.fillRoundedRect(-14, -12, 5, 13, 2)
-      g.fillRoundedRect(  9, -12, 5, 13, 2)
+      g.fillRect(cx - 3, cy, 7, 10)
+      g.fillStyle(0x1a1a2e)
+      g.fillRoundedRect(dir === 'right' ? cx : cx - 4, cy + 8, 8, 4, 2)
     }
-    // hands
+
+    // Body (shirt)
+    g.fillStyle(0x4f8ef7)
+    g.fillRoundedRect(cx - 9, cy - 14, 18, 16, 4)
+    // Shirt detail
+    g.fillStyle(0x3a70d4, 0.6)
+    g.fillRoundedRect(cx - 9, cy - 14, 18, 4, 4)
+
+    // Head (skin)
     g.fillStyle(0xf5c07a)
-    g.fillCircle(fr ? 11 : -12, 1, 3)
-    g.fillCircle(fr ? -12 : 11, 1, 3)
+    g.fillCircle(cx, cy - 22, 9)
 
-    // ── Head ──
-    g.fillStyle(0xf5c07a)    // skin
-    g.fillCircle(fr ? 2 : -2, -24, 10)
-    // ear
-    g.fillCircle(fr ? 11 : -11, -24, 3)
-
-    // ── Hair ──
-    g.fillStyle(0x3c2010)    // dark brown
-    g.fillEllipse(fr ? 1 : -1, -31, 17, 8)
-    g.fillRect((fr ? -7 : -8), -34, 15, 6)
-
-    // ── Eyes ──
-    g.fillStyle(0x1a1a2e)
-    if (fr) {
-      g.fillCircle(5,  -25, 2)
-      g.fillCircle(0,  -25, 1.5)
+    // Hair
+    g.fillStyle(0x3a2208)
+    if (dir === 'up') {
+      g.fillCircle(cx, cy - 22, 9)
     } else {
-      g.fillCircle(-5, -25, 2)
-      g.fillCircle( 0, -25, 1.5)
+      g.fillRect(cx - 9, cy - 31, 18, 10)
+      g.fillCircle(cx, cy - 31, 5)
+      g.fillRect(cx - 9, cy - 26, 4, 6)
+      g.fillRect(cx + 5, cy - 26, 4, 6)
     }
-    // eye highlight
-    g.fillStyle(0xffffff, 0.8)
-    if (fr) { g.fillCircle(6, -26, 0.8) } else { g.fillCircle(-6, -26, 0.8) }
 
-    // ── Nose ──
-    g.fillStyle(0xe0a060, 0.7)
-    g.fillCircle(fr ? 3 : -3, -23, 1.5)
+    // Eyes (visible for down/left/right)
+    if (dir !== 'up') {
+      g.fillStyle(0x1a0a00)
+      const eyeY = cy - 22
+      if (dir === 'down') {
+        g.fillCircle(cx - 3, eyeY, 1.5)
+        g.fillCircle(cx + 3, eyeY, 1.5)
+        // Eye whites (blink on frame 1)
+        if (frame === 0) {
+          g.fillStyle(0xffffff)
+          g.fillCircle(cx - 3, eyeY - 0.5, 0.8)
+          g.fillCircle(cx + 3, eyeY - 0.5, 0.8)
+        }
+      } else if (dir === 'left') {
+        g.fillCircle(cx - 4, eyeY, 1.5)
+      } else {
+        g.fillCircle(cx + 4, eyeY, 1.5)
+      }
+    }
+  }
+
+  // ── Player object ─────────────────────────────────────────────────────────
+  private createPlayer() {
+    this.playerSprite = this.add.image(this.pX, this.pY, 'player-down-0')
+      .setOrigin(0.5, 0.72)
+      .setDepth(10)
+
+    this.nameText = this.add.text(this.pX, this.pY + 12, this.displayName, {
+      fontSize: '11px', color: '#ffffff',
+      backgroundColor: '#00000055',
+      padding: { x: 4, y: 2 },
+      fontFamily: 'monospace',
+    }).setOrigin(0.5, 0).setDepth(11)
+  }
+
+  // ── Entry glow (animated, redrawn every frame — very minimal) ─────────────
+  private createEntryGfx() {
+    this.entryGfx = this.add.graphics().setDepth(3)
+  }
+
+  // ── HUD prompt ─────────────────────────────────────────────────────────────
+  private createPrompt() {
+    this.promptBg   = this.add.graphics().setScrollFactor(0).setDepth(20).setVisible(false)
+    this.promptText = this.add.text(0, 0, '', {
+      fontSize: '13px', color: '#ffffff', fontFamily: 'monospace',
+      padding: { x: 10, y: 6 },
+    }).setScrollFactor(0).setDepth(21).setVisible(false)
   }
 
   // ── Camera ────────────────────────────────────────────────────────────────
   private setupCamera() {
     this.cameras.main.setBounds(0, 0, WORLD_W, WORLD_H)
-    this.cameras.main.setZoom(0.7)
-    this.cameras.main.startFollow(this.playerContainer, true, 0.09, 0.09)
+    this.cameras.main.setZoom(2.2)
+    this.cameras.main.startFollow(this.playerSprite, true, 0.08, 0.08)
   }
 
   // ── Keys ──────────────────────────────────────────────────────────────────
   private setupKeys() {
     const kb = this.input.keyboard!
     this.keys = {
-      w:  kb.addKey(Phaser.Input.Keyboard.KeyCodes.W),
-      s:  kb.addKey(Phaser.Input.Keyboard.KeyCodes.S),
-      a:  kb.addKey(Phaser.Input.Keyboard.KeyCodes.A),
-      d:  kb.addKey(Phaser.Input.Keyboard.KeyCodes.D),
-      up:    kb.addKey(Phaser.Input.Keyboard.KeyCodes.UP),
-      down:  kb.addKey(Phaser.Input.Keyboard.KeyCodes.DOWN),
-      left:  kb.addKey(Phaser.Input.Keyboard.KeyCodes.LEFT),
-      right: kb.addKey(Phaser.Input.Keyboard.KeyCodes.RIGHT),
-      e: kb.addKey(Phaser.Input.Keyboard.KeyCodes.E),
+      W:    kb.addKey(Phaser.Input.Keyboard.KeyCodes.W),
+      S:    kb.addKey(Phaser.Input.Keyboard.KeyCodes.S),
+      A:    kb.addKey(Phaser.Input.Keyboard.KeyCodes.A),
+      D:    kb.addKey(Phaser.Input.Keyboard.KeyCodes.D),
+      up:   kb.addKey(Phaser.Input.Keyboard.KeyCodes.UP),
+      down: kb.addKey(Phaser.Input.Keyboard.KeyCodes.DOWN),
+      left: kb.addKey(Phaser.Input.Keyboard.KeyCodes.LEFT),
+      right:kb.addKey(Phaser.Input.Keyboard.KeyCodes.RIGHT),
+      E:    kb.addKey(Phaser.Input.Keyboard.KeyCodes.E),
     }
-    this.keys.e.on('down', () => {
-      if (this.nearBuilding?.available) this.enterBuilding(this.nearBuilding)
-    })
-  }
-
-  // ── Prompt ────────────────────────────────────────────────────────────────
-  private createPrompt() {
-    this.promptText = this.add.text(
-      this.cameras.main.width / 2, this.cameras.main.height - 50, '',
-      { fontSize: '13px', color: '#1a1a3e', backgroundColor: '#ffffffee', padding: { x:14, y:8 } }
-    ).setOrigin(0.5, 1).setScrollFactor(0).setDepth(9999).setAlpha(0)
-
-    this.scale.on('resize', () => {
-      this.promptText?.setPosition(this.cameras.main.width / 2, this.cameras.main.height - 50)
-    })
-  }
-
-  private enterBuilding(b: Bldg) {
-    this.cameras.main.flash(280, 255, 255, 255, false)
-    this.time.delayedCall(300, () => {
-      window.dispatchEvent(new CustomEvent('realm:enter-building', { detail: { href:b.href, id:b.id } }))
-    })
   }
 
   // ── Update ────────────────────────────────────────────────────────────────
   update(_time: number, delta: number) {
+    this.handleMovement(delta)
+    this.animateEntryGlow(_time)
+    this.checkProximity()
+    this.broadcastPosition(_time)
+  }
+
+  private handleMovement(delta: number) {
     const dt = delta / 1000
-    const { w, s, a, d, up, down, left, right } = this.keys
+    let dx = 0, dy = 0
 
-    let vx = 0, vy = 0
-    // GTA-style: W=up, S=down, A=left, D=right (composes naturally to iso diagonals)
-    if (w.isDown  || up.isDown)    vy -= SPEED
-    if (s.isDown  || down.isDown)  vy += SPEED
-    if (a.isDown  || left.isDown)  vx -= SPEED
-    if (d.isDown  || right.isDown) vx += SPEED
-    if (vx !== 0 && vy !== 0) { vx *= 0.707; vy *= 0.707 }
+    if (this.keys.W.isDown || this.keys.up.isDown)    { dy -= 1; this.pDir = 'up' }
+    if (this.keys.S.isDown || this.keys.down.isDown)  { dy += 1; this.pDir = 'down' }
+    if (this.keys.A.isDown || this.keys.left.isDown)  { dx -= 1; this.pDir = 'left' }
+    if (this.keys.D.isDown || this.keys.right.isDown) { dx += 1; this.pDir = 'right' }
 
-    const isMoving = vx !== 0 || vy !== 0
+    if (dx !== 0 && dy !== 0) { dx *= 0.707; dy *= 0.707 }
+    this.isMoving = dx !== 0 || dy !== 0
 
-    if (isMoving) {
-      if (vx > 5)       this.facingRight = true
-      else if (vx < -5) this.facingRight = false
+    if (this.isMoving) {
+      const nx = this.pX + dx * SPEED * dt
+      const ny = this.pY + dy * SPEED * dt
+      if (canWalk(nx, this.pY - P_R) && canWalk(nx, this.pY + P_R))
+        this.pX = Phaser.Math.Clamp(nx, P_R, WORLD_W - P_R)
+      if (canWalk(this.pX - P_R, ny) && canWalk(this.pX + P_R, ny))
+        this.pY = Phaser.Math.Clamp(ny, P_R, WORLD_H - P_R)
 
-      const dx = vx * dt, dy = vy * dt
-      if (canOccupy(this.playerSx + dx, this.playerSy))      this.playerSx += dx
-      if (canOccupy(this.playerSx,      this.playerSy + dy)) this.playerSy += dy
-
-      this.playerContainer.x = this.playerSx
-      this.playerContainer.y = this.playerSy
-
-      this.walkTick++
-      // Walk bob
-      const bob = Math.sin(this.walkTick * 0.28) * 2
-      this.playerContainer.y = this.playerSy + bob
-      // Redraw sprite every 5 ticks for animation
-      if (this.walkTick % 5 === 0) this.drawPlayerSprite()
-    } else {
-      if (this.walkTick !== 0) {
-        this.walkTick = 0
-        this.playerContainer.y = this.playerSy
-        this.drawPlayerSprite()
-      }
+      this.walkTimer += delta
+      if (this.walkTimer > 160) { this.walkTimer = 0; this.walkFrame ^= 1 }
     }
 
-    // Update depth each frame for correct painter ordering
-    const tile = st(this.playerSx, this.playerSy)
-    this.playerContainer.setDepth((tile.col + tile.row) * 4 + 2.5)
+    this.playerSprite.x = this.pX
+    this.playerSprite.y = this.pY
+    this.nameText.x     = this.pX
+    this.nameText.y     = this.pY + 14
 
-    // Proximity check for buildings
-    let closest: Bldg | null = null, closestDist = Infinity
+    const texKey = `player-${this.pDir}-${this.isMoving ? this.walkFrame : 0}`
+    if (this.playerSprite.texture.key !== texKey) this.playerSprite.setTexture(texKey)
+  }
+
+  private animateEntryGlow(time: number) {
+    this.entryGfx.clear()
+    const pulse = 0.35 + 0.25 * Math.sin(time / 450)
     for (const b of BUILDINGS) {
-      const { sx, sy } = ts(b.col, b.row)
-      const dist = Phaser.Math.Distance.Between(this.playerSx, this.playerSy, sx, sy)
-      if (dist < ENT_R && dist < closestDist) { closestDist = dist; closest = b }
+      if (!b.available || b.kind) continue
+      const cx = b.col * TW + (b.w ?? 2) * TW / 2
+      const cy = b.row * TW + (b.h ?? 2) * TW / 2
+      this.entryGfx.lineStyle(2, b.color, pulse)
+      this.entryGfx.strokeCircle(cx, cy, ENT_R)
+      this.entryGfx.fillStyle(b.color, pulse * 0.12)
+      this.entryGfx.fillCircle(cx, cy, ENT_R)
     }
+  }
 
-    if (closest !== this.nearBuilding) {
-      this.nearBuilding = closest
-      if (closest?.available) {
-        this.promptText.setText(`[E]  Enter  ${closest.name}`)
-        this.tweens.add({ targets: this.promptText, alpha: 1, duration: 180 })
-      } else if (closest) {
-        this.promptText.setText(`🔒  ${closest.name}  —  Coming Soon`)
-        this.tweens.add({ targets: this.promptText, alpha: 0.45, duration: 180 })
-      } else {
-        this.tweens.add({ targets: this.promptText, alpha: 0, duration: 200 })
+  private checkProximity() {
+    const prev = this.nearBuilding
+    let found: Bldg | null = null
+
+    for (const b of BUILDINGS) {
+      const cx = b.col * TW + (b.w ?? 2) * TW / 2
+      const cy = b.row * TW + (b.h ?? 2) * TW / 2
+      if (Phaser.Math.Distance.Between(this.pX, this.pY, cx, cy) < ENT_R) {
+        found = b; break
       }
     }
 
-    // Emit position for minimap
-    if (_time - this.lastPosEmit > 80) {
-      this.lastPosEmit = _time
-      window.dispatchEvent(new CustomEvent('realm:player-position', {
-        detail: { x: this.playerSx, y: this.playerSy },
+    this.nearBuilding = found
+    if (found !== prev) found ? this.showPrompt(found) : this.hidePrompt()
+
+    if (found?.available && Phaser.Input.Keyboard.JustDown(this.keys.E)) {
+      window.dispatchEvent(new CustomEvent('realm:enter-building', {
+        detail: { href: found.href, id: found.id },
       }))
     }
   }
 
+  private showPrompt(b: Bldg) {
+    const label = b.available ? `[E] Enter  ${b.name}` : `🔒  ${b.name}`
+    this.promptText.setText(label).setVisible(true)
+    const { width: sw, height: sh } = this.cameras.main
+    const px = sw / 2 - this.promptText.width / 2
+    const py = sh - 56 - this.promptText.height / 2
+    this.promptText.setPosition(px, py)
+    this.promptBg.clear().setVisible(true)
+    this.promptBg.fillStyle(0x000000, 0.72)
+    this.promptBg.fillRoundedRect(px - 5, py - 3, this.promptText.width + 10, this.promptText.height + 6, 6)
+    this.promptBg.lineStyle(1, b.available ? b.color : 0x444455, 0.6)
+    this.promptBg.strokeRoundedRect(px - 5, py - 3, this.promptText.width + 10, this.promptText.height + 6, 6)
+  }
+
+  private hidePrompt() {
+    this.promptText.setVisible(false)
+    this.promptBg.clear().setVisible(false)
+  }
+
+  private broadcastPosition(time: number) {
+    if (time - this.lastPosEmit < 80) return
+    this.lastPosEmit = time
+    window.dispatchEvent(new CustomEvent('realm:player-position', { detail: { x: this.pX, y: this.pY } }))
+  }
+
   shutdown() {
-    if (this.teleportHandler) window.removeEventListener('realm:teleport', this.teleportHandler)
+    window.removeEventListener('realm:teleport', this.teleportHandler)
   }
 }

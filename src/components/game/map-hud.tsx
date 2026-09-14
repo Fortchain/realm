@@ -4,23 +4,19 @@ import { useState, useEffect, useRef, useCallback } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { X, Plus, Minus, Locate, MapPin } from "lucide-react"
 
-// ── Iso grid constants (mirrors city-scene.ts) ────────────────────────────────
-const GC   = 48
-const GR   = 48
-const HW   = 50
-const HH   = 25
-const OX   = 2500
-const OY   = 300
+// ── Grid constants (mirrors city-scene.ts — top-down 2D) ─────────────────────
+const GC = 48
+const GR = 48
+const TW = 48   // tile size px (same as city-scene.ts)
 
-// Convert player screen-space position to fractional tile coords
+// Convert player world position to fractional tile coords
 function screenToTile(sx: number, sy: number) {
-  const dx = sx - OX, dy = sy - OY
-  return { col: (dx / HW + dy / HH) / 2, row: (dy / HH - dx / HW) / 2 }
+  return { col: sx / TW, row: sy / TW }
 }
 
-// Convert tile coords to player screen-space position
+// Convert tile coords to player world position (tile center)
 function tileToScreen(col: number, row: number) {
-  return { sx: OX + (col - row) * HW, sy: OY + (col + row) * HH }
+  return { sx: col * TW + TW / 2, sy: row * TW + TW / 2 }
 }
 
 // ── Grid (top-down logical, mirrors city-scene.ts) ────────────────────────────
@@ -502,8 +498,8 @@ function FullMap({ playerScreenPos, onClose, onTeleport }: {
 
 // ── Main export ───────────────────────────────────────────────────────────────
 export function MapHUD() {
-  // Player spawn: financial district (matches city-scene.ts)
-  const spawn = tileToScreen(21, 12)
+  // Player spawn: financial district centre (matches city-scene.ts pX/pY = 21.5*TW, 12.5*TW)
+  const spawn = tileToScreen(21.5, 12.5)
   const [playerScreenPos, setPlayerScreenPos] = useState({ x: spawn.sx, y: spawn.sy })
   const [expanded, setExpanded] = useState(false)
 
